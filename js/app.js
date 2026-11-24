@@ -403,7 +403,7 @@
       <button class="${I18N.lang === 'ru' ? 'on' : ''}" data-act="set-lang" data-v="ru">Русский</button></div></div>`;
     const foot = `<p class="muted small center">${t('install_hint')}</p>
       ${API.DEMO ? `<button class="btn ghost wide" data-act="reset-demo">Reset demo data</button>` : ''}
-      <p class="muted small center">Map data © OpenStreetMap contributors, © CARTO</p>`;
+      <p class="muted small center">Map data © OpenStreetMap contributors</p>`;
     if (!u) return `<div class="pad"><div class="card center"><p>${t('sign_in_needed')}</p>${signInBlock()}</div>${langs}${foot}</div>`;
     const mine = S.db.reviews.filter(r => r.user_id === u.id).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
     return `<div class="pad">
@@ -428,10 +428,13 @@
       .setView(CFG.CITY_CENTER, CFG.CITY_ZOOM);
     L.control.zoom({ position: 'bottomleft' }).addTo(map);
     map.attributionControl.setPrefix('<a href="https://leafletjs.com">Leaflet</a>');
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19, subdomains: 'abcd',
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
-    }).addTo(map);
+    // Map tiles: CARTO "Voyager" if a free key is set in config.js, otherwise standard OpenStreetMap (no key needed).
+    const osmAttr = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+    const tiles = CFG.CARTO_KEY
+      ? L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=' + encodeURIComponent(CFG.CARTO_KEY),
+          { maxZoom: 19, attribution: osmAttr + ' © <a href="https://carto.com/attributions">CARTO</a>' })
+      : L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: osmAttr });
+    tiles.addTo(map);
     markerLayer = L.layerGroup().addTo(map);
     map.on('popupopen', e => {
       const b = e.popup.getElement().querySelector('[data-act]');

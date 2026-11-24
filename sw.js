@@ -1,6 +1,6 @@
 // Service worker: makes the app installable and opens instantly / offline.
 // Bump VERSION after you change any app file so phones pick up the update.
-const VERSION = 'kotletka-v2';
+const VERSION = 'kotletka-v3';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/config.js', 'js/i18n.js', 'js/demo-data.js', 'js/api.js', 'js/app.js',
@@ -28,7 +28,7 @@ self.addEventListener('fetch', e => {
       caches.open(VERSION).then(c => c.put(e.request, copy));
       return res;
     }).catch(() => caches.match(e.request).then(r => r || caches.match('index.html'))));
-  } else if (url.hostname.endsWith('basemaps.cartocdn.com')) {
+  } else if ((url.hostname === 'tile.openstreetmap.org' || url.hostname.endsWith('basemaps.cartocdn.com'))) {
     // map tiles: cache first
     e.respondWith(caches.open(VERSION + '-tiles').then(c => c.match(e.request).then(hit => hit ||
       fetch(e.request).then(res => { if (res.ok) c.put(e.request, res.clone()); return res; }))));
