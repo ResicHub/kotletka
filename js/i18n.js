@@ -2,7 +2,7 @@
 (function () {
   const en = {
     tab_map: 'Map', tab_places: 'Places', tab_top: 'Top', tab_profile: 'Profile',
-    demo_banner: 'Demo mode — sample data, saved only in this browser',
+    not_configured: 'Not configured: set API_URL and GOOGLE_CLIENT_ID in js/config.js',
     loading: 'Loading…', offline_cached: 'Offline — showing saved data', refresh: 'Refresh',
     search_places: 'Search places…', search_dishes: 'Search dishes…',
     all: 'All', only_reviewed: 'With reviews', show_more: 'Show more',
@@ -19,7 +19,7 @@
     top_hint: 'Ranked by rating; dishes with more reviews weigh more.',
     your_rating: 'Your rating', comment: 'Comment', comment_ph: 'What was good or bad?',
     write_review: 'Write a review', edit_review: 'Edit my review', you: 'You', edited: 'edited',
-    sign_in: 'Sign in with Google', sign_in_demo: 'Sign in (demo, as admin)', sign_out: 'Sign out',
+    sign_in: 'Sign in with Google', sign_out: 'Sign out',
     sign_in_needed: 'Sign in to add places, dishes and reviews.',
     display_name: 'Display name', change_name: 'Change name', my_reviews: 'My reviews',
     language: 'Language', admin: 'Moderator', install_hint: 'Tip: use “Add to Home Screen” in your browser menu to install the app.',
@@ -29,10 +29,17 @@
     at_place: 'at', by: 'by', map_attr: 'Map',
     types: { cafe: 'Cafe', restaurant: 'Restaurant', fast_food: 'Fast food', bar: 'Bar / pub', coffee: 'Coffee shop',
       bakery: 'Bakery', canteen: 'Canteen', other: 'Other' },
-    cats: { soups: 'Soups', salads: 'Salads', starters: 'Starters', pizza: 'Pizza', burgers: 'Burgers', sushi: 'Sushi & rolls',
-      pasta: 'Pasta', meat: 'Meat', fish: 'Fish & seafood', dumplings: 'Pelmeni & dumplings', asian: 'Asian',
-      breakfast: 'Breakfast', desserts: 'Desserts', bakery: 'Bakery', coffee: 'Coffee & tea', drinks: 'Drinks',
-      street_food: 'Street food', other: 'Other' },
+    cats: { soups: 'Soups', salads: 'Salads', meat: 'Meat', fish: 'Fish', starters: 'Starters', pelmeni: 'Pelmeni',
+      pasta: 'Pasta', other_main: 'Other main', pizza: 'Pizza', burgers: 'Burgers', sushi: 'Sushi', shawarma: 'Shaurma',
+      other_fast: 'Other fast food', breakfast: 'Breakfast', business_lunch: 'Business lunch', bakery: 'Bakery',
+      desserts: 'Desserts', coffee: 'Coffee', tea: 'Tea', soft_drinks: 'Non-alcoholic', alcohol: 'Alcohol' },
+    groups: { main: 'Main', fast_food: 'Fast food', breakfast: 'Breakfast', business_lunch: 'Business lunch',
+      bakery: 'Bakery', desserts: 'Desserts', drinks: 'Drinks' },
+    subcategory: 'Subcategory', types_pick: 'Type (choose one or more)', pick_one_type: 'Choose at least one type',
+    lunch: 'Business lunch', lunch_q: 'Is there a business lunch?', yes: 'Yes', no: 'No', unknown: 'Unknown',
+    lunch_from: 'From', lunch_to: 'To', lunch_menu: 'Lunch menu', lunch_menu_ph: 'e.g. Soup + main + drink — 350 ₽',
+    lunch_none: 'No business lunch', lunch_unknown: 'No info yet', lunch_add: 'Add info', lunch_dishes: 'Business lunch dishes',
+    has_lunch: 'Business lunch',
     errors: {
       auth_required: 'Please sign in first', bad_token: 'Sign-in expired, please sign in again',
       token_expired: 'Sign-in expired, please sign in again', forbidden: 'Not allowed',
@@ -40,13 +47,13 @@
       dish_exists: 'This dish already exists here', bad_rating: 'Choose a rating from 0 to 10',
       photo_too_large: 'Photo is too large', busy_try_again: 'Server is busy, try again',
       not_found: 'Not found — maybe it was deleted', network: 'No connection to the server',
-      banned: 'Your account is blocked',
+      banned: 'Your account is blocked', not_configured: 'The app is not configured yet',
     },
   };
 
   const ru = {
     tab_map: 'Карта', tab_places: 'Места', tab_top: 'Топ', tab_profile: 'Профиль',
-    demo_banner: 'Демо-режим — тестовые данные, хранятся только в этом браузере',
+    not_configured: 'Не настроено: укажите API_URL и GOOGLE_CLIENT_ID в js/config.js',
     loading: 'Загрузка…', offline_cached: 'Нет сети — показаны сохранённые данные', refresh: 'Обновить',
     search_places: 'Поиск мест…', search_dishes: 'Поиск блюд…',
     all: 'Все', only_reviewed: 'С отзывами', show_more: 'Показать ещё',
@@ -63,7 +70,7 @@
     top_hint: 'По рейтингу; блюда с большим числом отзывов весят больше.',
     your_rating: 'Ваша оценка', comment: 'Комментарий', comment_ph: 'Что понравилось или нет?',
     write_review: 'Написать отзыв', edit_review: 'Изменить мой отзыв', you: 'Вы', edited: 'изменён',
-    sign_in: 'Войти через Google', sign_in_demo: 'Войти (демо, как модератор)', sign_out: 'Выйти',
+    sign_in: 'Войти через Google', sign_out: 'Выйти',
     sign_in_needed: 'Войдите, чтобы добавлять места, блюда и отзывы.',
     display_name: 'Отображаемое имя', change_name: 'Изменить имя', my_reviews: 'Мои отзывы',
     language: 'Язык', admin: 'Модератор', install_hint: 'Совет: в меню браузера выберите «На экран „Домой“», чтобы установить приложение.',
@@ -73,10 +80,17 @@
     at_place: 'в', by: '', map_attr: 'Карта',
     types: { cafe: 'Кафе', restaurant: 'Ресторан', fast_food: 'Фастфуд', bar: 'Бар / паб', coffee: 'Кофейня',
       bakery: 'Пекарня', canteen: 'Столовая', other: 'Другое' },
-    cats: { soups: 'Супы', salads: 'Салаты', starters: 'Закуски', pizza: 'Пицца', burgers: 'Бургеры', sushi: 'Суши и роллы',
-      pasta: 'Паста', meat: 'Мясо', fish: 'Рыба и морепродукты', dumplings: 'Пельмени и вареники', asian: 'Азиатская кухня',
-      breakfast: 'Завтраки', desserts: 'Десерты', bakery: 'Выпечка', coffee: 'Кофе и чай', drinks: 'Напитки',
-      street_food: 'Стритфуд', other: 'Другое' },
+    cats: { soups: 'Супы', salads: 'Салаты', meat: 'Мясо', fish: 'Рыба', starters: 'Закуски', pelmeni: 'Пельмени',
+      pasta: 'Паста', other_main: 'Другое основное', pizza: 'Пицца', burgers: 'Бургеры', sushi: 'Суши', shawarma: 'Шаурма',
+      other_fast: 'Другой фастфуд', breakfast: 'Завтраки', business_lunch: 'Бизнес-ланч', bakery: 'Выпечка',
+      desserts: 'Десерты', coffee: 'Кофе', tea: 'Чай', soft_drinks: 'Безалкогольные', alcohol: 'Алкоголь' },
+    groups: { main: 'Основные блюда', fast_food: 'Фастфуд', breakfast: 'Завтраки', business_lunch: 'Бизнес-ланч',
+      bakery: 'Выпечка', desserts: 'Десерты', drinks: 'Напитки' },
+    subcategory: 'Подкатегория', types_pick: 'Тип (можно несколько)', pick_one_type: 'Выберите хотя бы один тип',
+    lunch: 'Бизнес-ланч', lunch_q: 'Есть бизнес-ланч?', yes: 'Да', no: 'Нет', unknown: 'Неизвестно',
+    lunch_from: 'С', lunch_to: 'До', lunch_menu: 'Меню ланча', lunch_menu_ph: 'Напр. Суп + горячее + напиток — 350 ₽',
+    lunch_none: 'Бизнес-ланча нет', lunch_unknown: 'Пока нет информации', lunch_add: 'Добавить информацию', lunch_dishes: 'Блюда бизнес-ланча',
+    has_lunch: 'Бизнес-ланч',
     errors: {
       auth_required: 'Сначала войдите', bad_token: 'Сессия истекла, войдите снова',
       token_expired: 'Сессия истекла, войдите снова', forbidden: 'Нет прав',
@@ -84,7 +98,7 @@
       dish_exists: 'Такое блюдо здесь уже есть', bad_rating: 'Выберите оценку от 0 до 10',
       photo_too_large: 'Фото слишком большое', busy_try_again: 'Сервер занят, попробуйте ещё раз',
       not_found: 'Не найдено — возможно, удалено', network: 'Нет связи с сервером',
-      banned: 'Ваш аккаунт заблокирован',
+      banned: 'Ваш аккаунт заблокирован', not_configured: 'Приложение ещё не настроено',
     },
   };
 
@@ -94,6 +108,22 @@
     if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
     return many;
   }
+
+  // Two-step dish categories: group → subcategories. A group with [] is a category by itself.
+  // Keep in sync with CATEGORIES in backend/Code.gs.
+  const CAT_TREE = {
+    main: ['soups', 'salads', 'meat', 'fish', 'starters', 'pelmeni', 'pasta', 'other_main'],
+    fast_food: ['pizza', 'burgers', 'sushi', 'shawarma', 'other_fast'],
+    breakfast: [],
+    business_lunch: [],
+    bakery: [],
+    desserts: [],
+    drinks: ['coffee', 'tea', 'soft_drinks', 'alcohol'],
+  };
+  const GROUP_OF = {};
+  Object.entries(CAT_TREE).forEach(([g, subs]) => { if (subs.length) subs.forEach(s => { GROUP_OF[s] = g; }); else GROUP_OF[g] = g; });
+  const LEGACY = { dumplings: 'pelmeni', asian: 'other_main', street_food: 'other_fast', drinks: 'soft_drinks', other: 'other_main' };
+  const normCat = k => { k = LEGACY[k] || k; return GROUP_OF[k] ? k : 'other_main'; };
 
   const dicts = { en, ru };
   let lang = 'en';
@@ -108,9 +138,16 @@
       return typeof v === 'function' ? v(arg) : v;
     },
     type(k) { return dicts[lang].types[k] || dicts[lang].types.other; },
-    cat(k) { return dicts[lang].cats[k] || dicts[lang].cats.other; },
+    types(list) { return (list || []).map(k => this.type(k)).join(', '); },
+    cat(k) { k = normCat(k); return dicts[lang].cats[k] || dicts[lang].cats.other_main; },
+    group(g) { return dicts[lang].groups[g] || g; },
+    // "Fast food › Pizza", or just "Desserts" for single categories
+    catFull(k) { k = normCat(k); const g = GROUP_OF[k]; return CAT_TREE[g].length ? `${this.group(g)} › ${this.cat(k)}` : this.cat(k); },
+    groupOf(k) { return GROUP_OF[normCat(k)]; },
+    normCat,
     err(code) { return dicts[lang].errors[code] || dicts[lang].error; },
     TYPES: Object.keys(en.types),
-    CATS: Object.keys(en.cats),
+    CAT_TREE,
+    GROUPS: Object.keys(CAT_TREE),
   };
 })();

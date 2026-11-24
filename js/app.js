@@ -11,8 +11,8 @@
     db: { places: [], dishes: [], reviews: [], users: [] },
     stack: [{ view: 'map' }],
     placesQuery: '', placesType: '', placesLimit: 60,
-    mapOnlyReviewed: false, topMode: 'top', topCat: '',
-    dishQuery: '', dishCat: '',
+    mapOnlyReviewed: false, topMode: 'top', topCat: { g: '', s: '' },
+    dishQuery: '', dishCat: { g: '', s: '' }, placesLunch: false,
     loaded: false, offline: false,
   };
   let IX = {};
@@ -52,9 +52,9 @@
     try {
       const data = await API.call('getAll');
       S.db = data; S.offline = false; S.loaded = true;
-      if (!API.DEMO) API.store.set('cache_db', data);
+      API.store.set('cache_db', data);
     } catch (e) {
-      S.offline = true;
+      S.offline = e.code !== 'not_configured';
       if (showErrors) toast(I18N.err(e.code), true);
     }
     // keep the signed-in user's name in sync with the users list
@@ -71,7 +71,7 @@
   }
   function afterChange() {
     buildIndexes();
-    if (!API.DEMO) API.store.set('cache_db', S.db);
+    API.store.set('cache_db', S.db);
     render(); refreshMarkers();
   }
 
@@ -111,6 +111,11 @@
   const userName = id => (API.user && API.user.id === id) ? API.user.name : (IX.user[id] ? IX.user[id].name : '?');
   const initials = name => esc(String(name || '?').trim().charAt(0).toUpperCase());
   const icon = name => `<svg class="ic" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+  // A place can have several types (stored as "cafe,bar")
+  const placeTypes = p => Array.isArray(p.types) && p.types.length ? p.types : String(p.type || 'other').split(',');
+  const lunchTime = p => p.lunch_from && p.lunch_to ? `${p.lunch_from}–${p.lunch_to}`
+    : p.lunch_from ? `${t('lunch_from')} ${p.lunch_from}` : p.lunch_to ? `${t('lunch_to')} ${p.lunch_to}` : '';
+  const hasLunch = p => p.lunch === 'yes';
 
   let toastTimer;
   function toast(msg, isError) {
@@ -177,19 +182,17 @@
   // `retry` runs automatically after a successful sign-in, so the user doesn't have to tap again.
   let afterLogin = null;
   async function requireLogin(retry) {
-    if (API.user && (API.DEMO || await API.ensureSignedIn())) return true;
+    if (API.user && await API.ensureSignedIn()) return true;
     afterLogin = retry || null;
     openSignInSheet();
     return false;
   }
   function signInBlock() {
-    return API.DEMO
-      ? `<button class="btn primary wide" data-act="demo-signin">${t('sign_in_demo')}</button>`
-      : `<div class="gbtn"></div>`;
+    return `<div class="gbtn"></div>`;
   }
   function openSignInSheet() {
     openSheet(t('sign_in'), `<p class="muted">${t('sign_in_needed')}</p>${signInBlock()}`, w => {
-      const g = $('.gbtn', w); if (g) API.renderSignInButton(g);
+      const g = $('.gbtn', w); if (g) API.renderSignInButton(g).catch(() => {});
     });
   }
   API.onAuth(u => {
@@ -215,7 +218,7 @@
     $('#hdr-back').hidden = S.stack.length < 2;
     $('#hdr-lang').textContent = I18N.lang === 'ru' ? 'EN' : 'RU';
     $('#banner').innerHTML = [
-      API.DEMO ? `<div class="banner demo">${t('demo_banner')}</div>` : '',
+      !API.CONFIGURED ? `<div class="banner warn">${t('not_configured')}</div>` : '',
       S.offline ? `<div class="banner off">${t('offline_cached')}</div>` : '',
     ].join('');
     // tabs
@@ -230,13 +233,13 @@
     if (!S.loaded && !S.db.places.length) { v.innerHTML = `<div class="empty">${t('loading')}</div>`; return; }
     const fn = { places: viewPlaces, top: viewTop, profile: viewProfile, place: viewPlace, dish: viewDish }[c.view];
     v.innerHTML = fn ? fn(c) : '';
-    const g = $('.gbtn', v); if (g) API.renderSignInButton(g);
+    const g = $('.gbtn', v); if (g) API.renderSignInButton(g).catch(() => {});
   }
 
   // ----- Places list -----
   function filteredPlaces() {
     const q = S.placesQuery.trim().toLowerCase().replace(/ё/g, 'е');
-    let list = S.db.places.filter(p => !S.placesType || p.type === S.placesType);
+    let list = S.db.places.filter(p => (!S.placesType || placeTypes(p).includes(S.placesType)) && (!S.placesLunch || hasLunch(p)));
     if (q) {
       list = list.filter(p => {
         const hay = (p.name + ' ' + (p.address || '') + ' ' +
@@ -251,8 +254,8 @@
     const st = IX.placeStat[p.id];
     return `<button class="item" data-act="open-place" data-id="${esc(p.id)}">
       <div class="item-main"><div class="item-title">${esc(p.name)}</div>
-      <div class="item-sub">${esc(I18N.type(p.type))}${p.address ? ' · ' + esc(p.address) : ''}</div>
-      <div class="item-sub small">${st.dishes ? t('dishes_n', st.dishes) + ' · ' : ''}${t('reviews_n', st.count)}</div></div>
+      <div class="item-sub">${esc(I18N.types(placeTypes(p)))}${p.address ? ' · ' + esc(p.address) : ''}</div>
+      <div class="item-sub small">${st.dishes ? t('dishes_n', st.dishes) + ' · ' : ''}${t('reviews_n', st.count)}${hasLunch(p) ? ` · <span class="lunch-tag">${t('has_lunch')}${lunchTime(p) ? ' ' + lunchTime(p) : ''}</span>` : ''}</div></div>
       ${badge(st.avg, st.count)}</button>`;
   }
   function placesListHtml() {
@@ -262,15 +265,30 @@
       ? `<button class="btn ghost wide" data-act="more-places">${t('show_more')} (${list.length - S.placesLimit})</button>` : '';
     return list.slice(0, S.placesLimit).map(placeRow).join('') + more;
   }
-  function chips(values, active, act, labelFn) {
-    return `<div class="chips">` + [['', t('all')], ...values.map(v => [v, labelFn(v)])].map(([v, l]) =>
+  function chips(values, active, act, labelFn, extraHtml = '', cls = '') {
+    return `<div class="chips ${cls}">` + extraHtml + [['', t('all')], ...values.map(v => [v, labelFn(v)])].map(([v, l]) =>
       `<button class="chip ${v === active ? 'on' : ''}" data-act="${act}" data-v="${esc(v)}">${esc(l)}</button>`).join('') + `</div>`;
   }
+  // Two-step category filter: group chips, then subcategory chips for the chosen group.
+  function catMatch(d, f) {
+    if (!f.g) return true;
+    if (I18N.groupOf(d.category) !== f.g) return false;
+    return !f.s || I18N.normCat(d.category) === f.s;
+  }
+  function catFilter(dishes, f, act) {
+    const groups = I18N.GROUPS.filter(g => dishes.some(d => I18N.groupOf(d.category) === g));
+    if (groups.length < 2 && !f.g) return '';
+    let html = chips(groups, f.g, act + '-g', g => I18N.group(g));
+    const subs = f.g ? I18N.CAT_TREE[f.g].filter(k => dishes.some(d => I18N.normCat(d.category) === k)) : [];
+    if (subs.length > 1) html += chips(subs, f.s, act + '-s', k => I18N.cat(k), '', 'sub');
+    return html;
+  }
   function viewPlaces() {
-    const usedTypes = I18N.TYPES.filter(ty => S.db.places.some(p => p.type === ty));
+    const usedTypes = I18N.TYPES.filter(ty => S.db.places.some(p => placeTypes(p).includes(ty)));
+    const lunchChip = `<button class="chip ${S.placesLunch ? 'on' : ''}" data-act="places-lunch">${icon('lunch')} ${t('has_lunch')}</button><span class="chip-sep"></span>`;
     return `<div class="pad">
       <div class="search">${icon('search')}<input id="places-q" type="search" placeholder="${t('search_places')}" value="${esc(S.placesQuery)}"></div>
-      ${chips(usedTypes, S.placesType, 'places-type', I18N.type)}
+      ${chips(usedTypes, S.placesType, 'places-type', I18N.type, lunchChip)}
       </div><div class="list" id="places-list">${placesListHtml()}</div>
       <button class="fab" data-act="add-place-pick">${icon('plus')}<span>${t('add_place')}</span></button>`;
   }
@@ -300,14 +318,13 @@
     const st = IX.placeStat[p.id];
     const dishes = (IX.dishesByPlace[p.id] || []).slice();
     const top = dishes.filter(d => IX.dishStat[d.id].count).sort((a, b) => IX.dishStat[b.id].score - IX.dishStat[a.id].score).slice(0, 3);
-    const cats = I18N.CATS.filter(k => dishes.some(d => d.category === k));
     const q = S.dishQuery.trim().toLowerCase();
-    const shown = dishes.filter(d => (!S.dishCat || d.category === S.dishCat) && (!q || d.name.toLowerCase().includes(q)))
+    const shown = dishes.filter(d => catMatch(d, S.dishCat) && (!q || d.name.toLowerCase().includes(q)))
       .sort((a, b) => (IX.dishStat[b.id].count - IX.dishStat[a.id].count) || a.name.localeCompare(b.name));
     return `<div class="pad">
       <div class="card hero">
         <div class="hero-top"><div>
-          <div class="item-sub">${esc(I18N.type(p.type))}</div>
+          <div class="item-sub">${esc(I18N.types(placeTypes(p)))}</div>
           <h1>${esc(p.name)}</h1>
           ${p.address ? `<div class="item-sub">${icon('pin')} ${esc(p.address)}</div>` : ''}
         </div>${badge(st.avg, st.count)}</div>
@@ -318,13 +335,32 @@
           <button class="btn ghost sm danger-text" data-act="delete-place" data-id="${esc(p.id)}">${icon('trash')} ${t('delete')}</button>` : ''}
         </div>
       </div>
+      ${lunchCard(p, dishes)}
       ${top.length ? `<h3>${t('top_here')}</h3><div class="list compact">${top.map(d => dishRow(d)).join('')}</div>` : ''}
       <h3>${t('dishes_n', dishes.length)}</h3>
       ${dishes.length > 6 ? `<div class="search">${icon('search')}<input id="dish-q" type="search" placeholder="${t('search_dishes')}" value="${esc(S.dishQuery)}"></div>` : ''}
-      ${cats.length > 1 ? chips(cats, S.dishCat, 'dish-cat', I18N.cat) : ''}
+      ${catFilter(dishes, S.dishCat, 'dish')}
       </div>
       <div class="list" id="dish-list">${shown.length ? shown.map(d => dishRow(d)).join('') : `<div class="empty">${t('no_dishes')}</div>`}</div>
       <button class="fab" data-act="add-dish" data-id="${esc(p.id)}">${icon('plus')}<span>${t('add_dish')}</span></button>`;
+  }
+
+  // Business lunch block on the place page
+  function lunchCard(p, dishes) {
+    const lunchDishes = dishes.filter(d => I18N.normCat(d.category) === 'business_lunch');
+    const editBtn = label => `<button class="btn ghost sm" data-act="edit-lunch" data-id="${esc(p.id)}">${icon('edit')} ${label}</button>`;
+    if (p.lunch === 'no') {
+      return `<div class="card lunch-card off"><div class="lunch-head">${icon('lunch')}<span class="grow muted">${t('lunch_none')}</span>${editBtn(t('edit'))}</div></div>`;
+    }
+    if (p.lunch !== 'yes') {
+      return `<div class="card lunch-card off"><div class="lunch-head">${icon('lunch')}<span class="grow"><b>${t('lunch')}</b> <span class="muted">· ${t('lunch_unknown')}</span></span>${editBtn(t('lunch_add'))}</div></div>`;
+    }
+    return `<div class="card lunch-card">
+      <div class="lunch-head">${icon('lunch')}<span class="grow"><b>${t('lunch')}</b>${lunchTime(p) ? ` <span class="lunch-time">${esc(lunchTime(p))}</span>` : ''}</span>${editBtn(t('edit'))}</div>
+      ${p.lunch_menu ? `<p class="lunch-menu">${esc(p.lunch_menu)}</p>` : ''}
+      ${lunchDishes.length ? `<div class="label small muted">${t('lunch_dishes')}</div><div class="list compact inset">${lunchDishes.map(d => dishRow(d)).join('')}</div>` : ''}
+      <button class="btn ghost sm" data-act="add-lunch-dish" data-id="${esc(p.id)}">${icon('plus')} ${t('add_dish')}</button>
+    </div>`;
   }
 
   // ----- Dish -----
@@ -363,7 +399,7 @@
       <div class="card hero">
         ${dishPhoto(d) ? `<img class="hero-photo" src="${esc(API.photoUrl(dishPhoto(d), 1000))}" data-act="view-photo" data-src="${esc(API.photoUrl(dishPhoto(d), 1600))}" alt="">` : ''}
         <div class="hero-top"><div>
-          <div class="item-sub">${esc(I18N.cat(d.category))}${fmtPrice(d.price) ? ' · ' + fmtPrice(d.price) : ''}</div>
+          <div class="item-sub">${esc(I18N.catFull(d.category))}${fmtPrice(d.price) ? ' · ' + fmtPrice(d.price) : ''}</div>
           <h1>${esc(d.name)}</h1>
           <button class="link" data-act="open-place" data-id="${esc(p.id)}">${icon('pin')} ${esc(p.name || '')}</button>
         </div>${badge(st.avg, st.count)}</div>
@@ -387,10 +423,9 @@
       return `<div class="pad">${seg}<div class="reviews">${list.length ? list.map(r => reviewCard(r, true)).join('') : `<div class="empty">${t('nothing_here')}</div>`}</div></div>`;
     }
     const rated = S.db.dishes.filter(d => IX.dishStat[d.id].count);
-    const cats = I18N.CATS.filter(k => rated.some(d => d.category === k));
-    const list = rated.filter(d => !S.topCat || d.category === S.topCat)
+    const list = rated.filter(d => catMatch(d, S.topCat))
       .sort((a, b) => IX.dishStat[b.id].score - IX.dishStat[a.id].score).slice(0, 50);
-    return `<div class="pad">${seg}${chips(cats, S.topCat, 'top-cat', I18N.cat)}<p class="muted small">${t('top_hint')}</p></div>
+    return `<div class="pad">${seg}${catFilter(rated, S.topCat, 'top')}<p class="muted small">${t('top_hint')}</p></div>
       <div class="list ranked">${list.length ? list.map((d, i) => `<div class="rank-row"><span class="rank">${i + 1}</span>${dishRow(d, true)}</div>`).join('')
         : `<div class="empty">${t('nothing_here')}</div>`}</div>`;
   }
@@ -402,7 +437,6 @@
       <button class="${I18N.lang === 'en' ? 'on' : ''}" data-act="set-lang" data-v="en">English</button>
       <button class="${I18N.lang === 'ru' ? 'on' : ''}" data-act="set-lang" data-v="ru">Русский</button></div></div>`;
     const foot = `<p class="muted small center">${t('install_hint')}</p>
-      ${API.DEMO ? `<button class="btn ghost wide" data-act="reset-demo">Reset demo data</button>` : ''}
       <p class="muted small center">Map data © OpenStreetMap contributors</p>`;
     if (!u) return `<div class="pad"><div class="card center"><p>${t('sign_in_needed')}</p>${signInBlock()}</div>${langs}${foot}</div>`;
     const mine = S.db.reviews.filter(r => r.user_id === u.id).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
@@ -452,8 +486,9 @@
       const m = L.circleMarker([p.lat, p.lng], {
         radius: has ? 9 : 6, color: '#fff', weight: 2, fillColor: color, fillOpacity: has ? 0.95 : 0.7,
       });
-      m.bindPopup(`<div class="pop"><b>${esc(p.name)}</b><div class="item-sub">${esc(I18N.type(p.type))}${p.address ? ' · ' + esc(p.address) : ''}</div>
+      m.bindPopup(`<div class="pop"><b>${esc(p.name)}</b><div class="item-sub">${esc(I18N.types(placeTypes(p)))}${p.address ? ' · ' + esc(p.address) : ''}</div>
         <div class="item-sub">${has ? '★ ' + st.avg.toFixed(1) + ' · ' : ''}${t('reviews_n', st.count)}</div>
+        ${hasLunch(p) ? `<div class="item-sub lunch-tag">${t('has_lunch')}${lunchTime(p) ? ' ' + esc(lunchTime(p)) : ''}</div>` : ''}
         <button class="btn primary sm" data-act="open-place" data-id="${esc(p.id)}">${t('open')}</button></div>`);
       markerLayer.addLayer(m);
     });
@@ -481,16 +516,24 @@
     return keys.map(k => `<option value="${k}" ${k === val ? 'selected' : ''}>${esc(labelFn(k))}</option>`).join('');
   }
   function placeForm(place, latlng) {
-    const edit = !!place; place = place || { name: '', address: '', type: 'cafe' };
+    const edit = !!place; place = place || { name: '', address: '', types: [] };
+    const chosen = new Set(edit ? placeTypes(place) : []);
     openSheet(edit ? t('edit') : t('add_place'), `<form class="form" id="f-place">
       <label>${t('name')}<input name="name" required maxlength="80" value="${esc(place.name)}"></label>
-      <label>${t('type')}<select name="type">${selectOptions(I18N.TYPES, I18N.type, place.type)}</select></label>
+      <div class="label">${t('types_pick')}</div>
+      <div class="chips wrap type-pick">${I18N.TYPES.map(k => `<button type="button" class="chip ${chosen.has(k) ? 'on' : ''}" data-k="${k}">${esc(I18N.type(k))}</button>`).join('')}</div>
       <label>${t('address')} <span class="muted">(${t('optional')})</span><input name="address" maxlength="120" value="${esc(place.address)}"></label>
       <button class="btn primary wide" type="submit">${t('save')}</button></form>`, w => {
       const f = $('#f-place', w); $('input', f).focus();
+      $('.type-pick', f).addEventListener('click', e => {
+        const b = e.target.closest('[data-k]'); if (!b) return;
+        chosen.has(b.dataset.k) ? chosen.delete(b.dataset.k) : chosen.add(b.dataset.k);
+        b.classList.toggle('on', chosen.has(b.dataset.k));
+      });
       f.addEventListener('submit', async e => {
         e.preventDefault();
-        const data = Object.fromEntries(new FormData(f));
+        if (!chosen.size) { toast(t('pick_one_type'), true); return; }
+        const data = { ...Object.fromEntries(new FormData(f)), types: I18N.TYPES.filter(k => chosen.has(k)) };
         const btn = $('button[type=submit]', f);
         const res = await busy(btn, () => edit
           ? API.call('editPlace', { place: { ...data, id: place.id } })
@@ -501,11 +544,17 @@
       });
     });
   }
-  function dishForm(placeId, dish) {
-    const edit = !!dish; dish = dish || { name: '', description: '', category: 'other', price: '' };
+  function dishForm(placeId, dish, presetCat) {
+    const edit = !!dish; dish = dish || { name: '', description: '', category: presetCat || '', price: '' };
+    const cat0 = dish.category ? I18N.normCat(dish.category) : '';
+    const group0 = cat0 ? I18N.groupOf(cat0) : '';
+    const subOptions = g => `<option value="">—</option>` + (I18N.CAT_TREE[g] || []).map(k =>
+      `<option value="${k}" ${k === cat0 ? 'selected' : ''}>${esc(I18N.cat(k))}</option>`).join('');
     openSheet(edit ? t('edit') : t('add_dish'), `<form class="form" id="f-dish">
       <label>${t('name')}<input name="name" required maxlength="80" value="${esc(dish.name)}"></label>
-      <label>${t('category')}<select name="category">${selectOptions(I18N.CATS, I18N.cat, dish.category)}</select></label>
+      <label>${t('category')}<select name="group" required><option value="">—</option>${I18N.GROUPS.map(g =>
+        `<option value="${g}" ${g === group0 ? 'selected' : ''}>${esc(I18N.group(g))}</option>`).join('')}</select></label>
+      <label class="sub-wrap" ${group0 && I18N.CAT_TREE[group0].length ? '' : 'hidden'}>${t('subcategory')}<select name="sub">${subOptions(group0)}</select></label>
       <label>${t('price')}, ${CFG.CURRENCY} <span class="muted">(${t('optional')})</span><input name="price" type="number" inputmode="numeric" min="0" step="1" value="${dish.price == null ? '' : esc(dish.price)}"></label>
       <label>${t('description')} <span class="muted">(${t('optional')})</span><textarea name="description" maxlength="300" rows="2">${esc(dish.description)}</textarea></label>
       <div class="label">${t('photo')} <span class="muted">(${t('optional')})</span></div>
@@ -513,9 +562,17 @@
       <button class="btn primary wide" type="submit">${t('save')}</button></form>`, w => {
       const f = $('#f-dish', w); $('input', f).focus();
       const ph = bindPhotoPicker(f);
+      const gSel = $('[name=group]', f), sSel = $('[name=sub]', f), subWrap = $('.sub-wrap', f);
+      gSel.addEventListener('change', () => {
+        const hasSubs = (I18N.CAT_TREE[gSel.value] || []).length > 0;
+        sSel.innerHTML = subOptions(gSel.value); subWrap.hidden = !hasSubs; sSel.required = hasSubs;
+      });
+      sSel.required = !subWrap.hidden;
       f.addEventListener('submit', async e => {
         e.preventDefault();
         const data = Object.fromEntries(new FormData(f));
+        data.category = (I18N.CAT_TREE[data.group] || []).length ? data.sub : data.group;
+        delete data.group; delete data.sub;
         if (ph.photo) data.photo = ph.photo;
         if (ph.removePhoto) data.removePhoto = true;
         const btn = $('button[type=submit]', f);
@@ -542,7 +599,7 @@
     inp.addEventListener('change', async () => {
       const file = inp.files[0]; if (!file) return;
       try {
-        st.photo = await resizeImage(file, API.DEMO ? 640 : 1280);
+        st.photo = await resizeImage(file, 1280);
         st.removePhoto = false; prev.src = st.photo; prev.hidden = false; rm.hidden = false;
       } catch (err) { toast(t('error'), true); }
     });
@@ -584,6 +641,38 @@
       });
     });
   }
+  function lunchForm(place) {
+    let state = place.lunch === 'yes' || place.lunch === 'no' ? place.lunch : '';
+    openSheet(t('lunch'), `<form class="form" id="f-lunch">
+      <div class="label">${t('lunch_q')}</div>
+      <div class="seg" id="l-seg">
+        <button type="button" data-v="yes">${t('yes')}</button><button type="button" data-v="no">${t('no')}</button><button type="button" data-v="">${t('unknown')}</button>
+      </div>
+      <div id="l-yes">
+        <div class="row2">
+          <label>${t('lunch_from')} <span class="muted">(${t('optional')})</span><input name="lunch_from" type="time" value="${esc(place.lunch_from || '')}"></label>
+          <label>${t('lunch_to')} <span class="muted">(${t('optional')})</span><input name="lunch_to" type="time" value="${esc(place.lunch_to || '')}"></label>
+        </div>
+        <label>${t('lunch_menu')} <span class="muted">(${t('optional')})</span><textarea name="lunch_menu" rows="4" maxlength="600" placeholder="${t('lunch_menu_ph')}">${esc(place.lunch_menu || '')}</textarea></label>
+      </div>
+      <button class="btn primary wide" type="submit">${t('save')}</button></form>`, w => {
+      const f = $('#f-lunch', w);
+      const paint = () => {
+        f.querySelectorAll('#l-seg button').forEach(b => b.classList.toggle('on', b.dataset.v === state));
+        $('#l-yes', f).hidden = state !== 'yes';
+      };
+      paint();
+      $('#l-seg', f).addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (b) { state = b.dataset.v; paint(); } });
+      f.addEventListener('submit', async e => {
+        e.preventDefault();
+        const data = Object.fromEntries(new FormData(f));
+        const res = await busy($('button[type=submit]', f), () => API.call('updateLunch', { id: place.id, lunch: state, ...data })).catch(() => null);
+        if (!res) return;
+        upsert('places', res); closeSheet(); afterChange(); toast(t('saved'));
+      });
+    });
+  }
+
   function nameForm() {
     openSheet(t('change_name'), `<form class="form" id="f-name">
       <label>${t('display_name')}<input name="name" required maxlength="40" value="${esc(API.user.name)}"></label>
@@ -603,12 +692,20 @@
   // ---------------- Events ----------------
   const ACTS = {
     'close-sheet': () => closeSheet(),
-    'open-place': el => { closeSheet(); S.dishQuery = ''; S.dishCat = ''; go('place', { id: el.dataset.id }); },
+    'open-place': el => { closeSheet(); S.dishQuery = ''; S.dishCat = { g: '', s: '' }; go('place', { id: el.dataset.id }); },
     'open-dish': el => go('dish', { id: el.dataset.id }),
     'more-places': () => { S.placesLimit += 60; $('#places-list').innerHTML = placesListHtml(); },
     'places-type': el => { S.placesType = el.dataset.v; S.placesLimit = 60; render(); },
-    'dish-cat': el => { S.dishCat = el.dataset.v; render(); },
-    'top-cat': el => { S.topCat = el.dataset.v; render(); },
+    'dish-g': el => { S.dishCat = { g: el.dataset.v, s: '' }; render(); },
+    'dish-s': el => { S.dishCat.s = el.dataset.v; render(); },
+    'top-g': el => { S.topCat = { g: el.dataset.v, s: '' }; render(); },
+    'top-s': el => { S.topCat.s = el.dataset.v; render(); },
+    'places-lunch': () => { S.placesLunch = !S.placesLunch; S.placesLimit = 60; render(); },
+    'edit-lunch': async el => { const id = el.dataset.id; if (await requireLogin(() => lunchForm(IX.place[id]))) lunchForm(IX.place[id]); },
+    'add-lunch-dish': async el => {
+      const id = el.dataset.id;
+      if (await requireLogin(() => dishForm(id, null, 'business_lunch'))) dishForm(id, null, 'business_lunch');
+    },
     'top-mode': el => { S.topMode = el.dataset.v; render(); },
     'set-lang': el => { I18N.setLang(el.dataset.v); render(); refreshMarkers(); },
     'map-filter': () => { S.mapOnlyReviewed = !S.mapOnlyReviewed; refreshMarkers(); renderMapOverlay(); },
@@ -661,8 +758,6 @@
     'view-photo': el => openSheet(t('photo'), `<img class="full-photo" src="${esc(el.dataset.src)}" alt="">`),
     'edit-name': () => nameForm(),
     'sign-out': () => { API.signOut(); },
-    'demo-signin': () => API.demoSignIn(),
-    'reset-demo': () => { API.resetDemo(); API.signOut(); loadData(); toast(t('saved')); },
   };
 
   function bindEvents() {
@@ -696,15 +791,13 @@
   // ---------------- Start ----------------
   function start() {
     API.restore();
-    if (!API.DEMO) {
-      const cached = API.store.get('cache_db', null);
-      if (cached) { S.db = cached; S.loaded = true; }
-    }
+    const cached = API.store.get('cache_db', null);
+    if (cached) { S.db = cached; S.loaded = true; }
     buildIndexes();
     bindEvents();
     render();
     loadData();
-    if ('serviceWorker' in navigator && !API.DEMO) {
+    if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').catch(() => {});
     }
   }
