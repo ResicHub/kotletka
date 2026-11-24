@@ -1,0 +1,116 @@
+// Translations. To add a word: add the key to both `en` and `ru`.
+(function () {
+  const en = {
+    tab_map: 'Map', tab_places: 'Places', tab_top: 'Top', tab_profile: 'Profile',
+    demo_banner: 'Demo mode — sample data, saved only in this browser',
+    loading: 'Loading…', offline_cached: 'Offline — showing saved data', refresh: 'Refresh',
+    search_places: 'Search places…', search_dishes: 'Search dishes…',
+    all: 'All', only_reviewed: 'With reviews', show_more: 'Show more',
+    no_places: 'No places found', no_dishes: 'No dishes yet — add the first one!',
+    no_reviews: 'No reviews yet — be the first!', nothing_here: 'Nothing here yet',
+    reviews_n: n => n === 1 ? '1 review' : `${n} reviews`,
+    dishes_n: n => n === 1 ? '1 dish' : `${n} dishes`,
+    open: 'Open', add_place: 'Add place', add_dish: 'Add dish',
+    pick_location: 'Move the map so the pin points at the place', confirm: 'Confirm', cancel: 'Cancel',
+    save: 'Save', delete: 'Delete', edit: 'Edit', close: 'Close', back: 'Back',
+    name: 'Name', address: 'Address', type: 'Type', description: 'Short description', category: 'Category',
+    price: 'Price', optional: 'optional', photo: 'Photo', add_photo: 'Add photo', remove_photo: 'Remove photo',
+    top_dishes: 'Top dishes', top_here: 'Top dishes here', latest_reviews: 'Latest reviews',
+    top_hint: 'Ranked by rating; dishes with more reviews weigh more.',
+    your_rating: 'Your rating', comment: 'Comment', comment_ph: 'What was good or bad?',
+    write_review: 'Write a review', edit_review: 'Edit my review', you: 'You', edited: 'edited',
+    sign_in: 'Sign in with Google', sign_in_demo: 'Sign in (demo, as admin)', sign_out: 'Sign out',
+    sign_in_needed: 'Sign in to add places, dishes and reviews.',
+    display_name: 'Display name', change_name: 'Change name', my_reviews: 'My reviews',
+    language: 'Language', admin: 'Moderator', install_hint: 'Tip: use “Add to Home Screen” in your browser menu to install the app.',
+    confirm_delete_review: 'Delete this review?', confirm_delete_dish: 'Delete this dish and all its reviews?',
+    confirm_delete_place: 'Delete this place with all dishes and reviews?',
+    saved: 'Saved', deleted: 'Deleted', error: 'Something went wrong',
+    at_place: 'at', by: 'by', map_attr: 'Map',
+    types: { cafe: 'Cafe', restaurant: 'Restaurant', fast_food: 'Fast food', bar: 'Bar / pub', coffee: 'Coffee shop',
+      bakery: 'Bakery', canteen: 'Canteen', other: 'Other' },
+    cats: { soups: 'Soups', salads: 'Salads', starters: 'Starters', pizza: 'Pizza', burgers: 'Burgers', sushi: 'Sushi & rolls',
+      pasta: 'Pasta', meat: 'Meat', fish: 'Fish & seafood', dumplings: 'Pelmeni & dumplings', asian: 'Asian',
+      breakfast: 'Breakfast', desserts: 'Desserts', bakery: 'Bakery', coffee: 'Coffee & tea', drinks: 'Drinks',
+      street_food: 'Street food', other: 'Other' },
+    errors: {
+      auth_required: 'Please sign in first', bad_token: 'Sign-in expired, please sign in again',
+      token_expired: 'Sign-in expired, please sign in again', forbidden: 'Not allowed',
+      name_required: 'Name is required', place_exists: 'This place is already on the map',
+      dish_exists: 'This dish already exists here', bad_rating: 'Choose a rating from 0 to 10',
+      photo_too_large: 'Photo is too large', busy_try_again: 'Server is busy, try again',
+      not_found: 'Not found — maybe it was deleted', network: 'No connection to the server',
+      banned: 'Your account is blocked',
+    },
+  };
+
+  const ru = {
+    tab_map: 'Карта', tab_places: 'Места', tab_top: 'Топ', tab_profile: 'Профиль',
+    demo_banner: 'Демо-режим — тестовые данные, хранятся только в этом браузере',
+    loading: 'Загрузка…', offline_cached: 'Нет сети — показаны сохранённые данные', refresh: 'Обновить',
+    search_places: 'Поиск мест…', search_dishes: 'Поиск блюд…',
+    all: 'Все', only_reviewed: 'С отзывами', show_more: 'Показать ещё',
+    no_places: 'Места не найдены', no_dishes: 'Блюд пока нет — добавьте первое!',
+    no_reviews: 'Отзывов пока нет — будьте первым!', nothing_here: 'Здесь пока пусто',
+    reviews_n: n => `${n} ${plural(n, 'отзыв', 'отзыва', 'отзывов')}`,
+    dishes_n: n => `${n} ${plural(n, 'блюдо', 'блюда', 'блюд')}`,
+    open: 'Открыть', add_place: 'Добавить место', add_dish: 'Добавить блюдо',
+    pick_location: 'Сдвиньте карту, чтобы метка указывала на место', confirm: 'Готово', cancel: 'Отмена',
+    save: 'Сохранить', delete: 'Удалить', edit: 'Изменить', close: 'Закрыть', back: 'Назад',
+    name: 'Название', address: 'Адрес', type: 'Тип', description: 'Краткое описание', category: 'Категория',
+    price: 'Цена', optional: 'необязательно', photo: 'Фото', add_photo: 'Добавить фото', remove_photo: 'Убрать фото',
+    top_dishes: 'Лучшие блюда', top_here: 'Лучшие блюда здесь', latest_reviews: 'Новые отзывы',
+    top_hint: 'По рейтингу; блюда с большим числом отзывов весят больше.',
+    your_rating: 'Ваша оценка', comment: 'Комментарий', comment_ph: 'Что понравилось или нет?',
+    write_review: 'Написать отзыв', edit_review: 'Изменить мой отзыв', you: 'Вы', edited: 'изменён',
+    sign_in: 'Войти через Google', sign_in_demo: 'Войти (демо, как модератор)', sign_out: 'Выйти',
+    sign_in_needed: 'Войдите, чтобы добавлять места, блюда и отзывы.',
+    display_name: 'Отображаемое имя', change_name: 'Изменить имя', my_reviews: 'Мои отзывы',
+    language: 'Язык', admin: 'Модератор', install_hint: 'Совет: в меню браузера выберите «На экран „Домой“», чтобы установить приложение.',
+    confirm_delete_review: 'Удалить этот отзыв?', confirm_delete_dish: 'Удалить блюдо и все отзывы о нём?',
+    confirm_delete_place: 'Удалить место со всеми блюдами и отзывами?',
+    saved: 'Сохранено', deleted: 'Удалено', error: 'Что-то пошло не так',
+    at_place: 'в', by: '', map_attr: 'Карта',
+    types: { cafe: 'Кафе', restaurant: 'Ресторан', fast_food: 'Фастфуд', bar: 'Бар / паб', coffee: 'Кофейня',
+      bakery: 'Пекарня', canteen: 'Столовая', other: 'Другое' },
+    cats: { soups: 'Супы', salads: 'Салаты', starters: 'Закуски', pizza: 'Пицца', burgers: 'Бургеры', sushi: 'Суши и роллы',
+      pasta: 'Паста', meat: 'Мясо', fish: 'Рыба и морепродукты', dumplings: 'Пельмени и вареники', asian: 'Азиатская кухня',
+      breakfast: 'Завтраки', desserts: 'Десерты', bakery: 'Выпечка', coffee: 'Кофе и чай', drinks: 'Напитки',
+      street_food: 'Стритфуд', other: 'Другое' },
+    errors: {
+      auth_required: 'Сначала войдите', bad_token: 'Сессия истекла, войдите снова',
+      token_expired: 'Сессия истекла, войдите снова', forbidden: 'Нет прав',
+      name_required: 'Укажите название', place_exists: 'Это место уже есть на карте',
+      dish_exists: 'Такое блюдо здесь уже есть', bad_rating: 'Выберите оценку от 0 до 10',
+      photo_too_large: 'Фото слишком большое', busy_try_again: 'Сервер занят, попробуйте ещё раз',
+      not_found: 'Не найдено — возможно, удалено', network: 'Нет связи с сервером',
+      banned: 'Ваш аккаунт заблокирован',
+    },
+  };
+
+  function plural(n, one, few, many) {
+    const m10 = n % 10, m100 = n % 100;
+    if (m10 === 1 && m100 !== 11) return one;
+    if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+    return many;
+  }
+
+  const dicts = { en, ru };
+  let lang = 'en';
+  try { lang = localStorage.getItem('lang') || ''; } catch (e) {}
+  if (!dicts[lang]) lang = (navigator.language || '').toLowerCase().startsWith('ru') ? 'ru' : 'en';
+
+  window.I18N = {
+    get lang() { return lang; },
+    setLang(l) { lang = dicts[l] ? l : 'en'; try { localStorage.setItem('lang', lang); } catch (e) {} },
+    t(key, arg) {
+      const v = dicts[lang][key] ?? en[key] ?? key;
+      return typeof v === 'function' ? v(arg) : v;
+    },
+    type(k) { return dicts[lang].types[k] || dicts[lang].types.other; },
+    cat(k) { return dicts[lang].cats[k] || dicts[lang].cats.other; },
+    err(code) { return dicts[lang].errors[code] || dicts[lang].error; },
+    TYPES: Object.keys(en.types),
+    CATS: Object.keys(en.cats),
+  };
+})();
