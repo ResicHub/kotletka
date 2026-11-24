@@ -717,7 +717,7 @@
           <button class="icon-btn" data-act="wish-remove" data-id="${esc(d.id)}" aria-label="${t('remove')}">${icon('x')}</button></div>`;
       }).join('')}</div>` : `<div class="empty small">${t('wishlist_empty')}</div>`}
       <h3>${t('badges')} · ${earnedCount(u.id)}/${(window.BADGES || []).length}</h3>
-      ${badgesHtml(u.id, true)}
+      ${badgesHtml(u.id, false)}
       ${langs}
       <h3>${t('my_reviews')}</h3>
       <div class="reviews">${mine.length ? mine.map(r => reviewCard(r, true)).join('') : `<div class="empty">${t('nothing_here')}</div>`}</div>
