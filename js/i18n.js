@@ -49,7 +49,7 @@
     added_wishlist: 'Added to “Want to try”', removed_wishlist: 'Removed from the list', remove: 'Remove',
     react_heart: 'Useful', react_clown: 'Clown', change_avatar: 'Profile photo', choose_photo: 'Choose photo',
     stat_reviews: 'reviews', stat_places: 'places', badges: 'Badges', badge: 'Badge', no_badges: 'No badges yet',
-    badge_earned: '✓ Earned', badge_locked: 'Not yet — here’s how to get it', add: 'Add',
+    badge_earned: '✓ Earned', new_badge: '🎉 New badge!', badge_locked: 'Not yet — here’s how to get it', add: 'Add',
     hours: 'Opening hours', hours_unknown: 'Hours unknown', open_now: 'Open now', closed_now: 'Closed',
     hours_hint: 'Leave empty if unknown. Late hours like 18:00–02:00 work too.',
     errors: {
@@ -113,7 +113,7 @@
     added_wishlist: 'Добавлено в «Хочу попробовать»', removed_wishlist: 'Убрано из списка', remove: 'Убрать',
     react_heart: 'Полезно', react_clown: 'Клоун', change_avatar: 'Фото профиля', choose_photo: 'Выбрать фото',
     stat_reviews: 'отзывов', stat_places: 'мест', badges: 'Значки', badge: 'Значок', no_badges: 'Значков пока нет',
-    badge_earned: '✓ Получен', badge_locked: 'Ещё нет — вот как получить', add: 'Добавить',
+    badge_earned: '✓ Получен', new_badge: '🎉 Новый значок!', badge_locked: 'Ещё нет — вот как получить', add: 'Добавить',
     hours: 'Часы работы', hours_unknown: 'Часы работы неизвестны', open_now: 'Открыто', closed_now: 'Закрыто',
     hours_hint: 'Оставьте пустым, если неизвестно. Можно и поздние часы, например 18:00–02:00.',
     errors: {

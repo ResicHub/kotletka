@@ -222,6 +222,8 @@ h3 { font-size: 15px; margin: 18px 0 8px; color: var(--muted); font-weight: 600;
 img.avatar { object-fit: cover; padding: 0; }
 .who-btn { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; border: 0; background: none; padding: 0; text-align: left; }
 .who-btn .review-who { display: flex; flex-direction: column; min-width: 0; }
+.who-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.who-line b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .avatar-edit { position: relative; border: 0; background: none; padding: 0; flex: none; }
 .avatar-edit .cam { position: absolute; right: -2px; bottom: -2px; background: var(--accent); color: #fff; border-radius: 50%;
   width: 24px; height: 24px; display: grid; place-items: center; border: 2px solid var(--card); }
@@ -271,3 +273,20 @@ img.avatar { object-fit: cover; padding: 0; }
 .open-tag.yes { background: #e3f5ea; color: var(--hi); }
 .open-tag.no { background: #fdecec; color: var(--lo); }
 .link.small { font-size: 13px; margin: 0; }
+
+/* New badge celebration */
+.celebrate {
+  position: fixed; left: 50%; top: calc(64px + var(--safe-t)); z-index: 2600;
+  width: min(460px, calc(100vw - 20px)); transform: translate(-50%, -20px) scale(.92); opacity: 0;
+  background: var(--card); border-radius: 18px; padding: 14px 16px; display: flex; align-items: center; gap: 14px;
+  box-shadow: 0 12px 36px rgba(0,0,0,.22); pointer-events: none;
+  transition: opacity .6s ease, transform .6s cubic-bezier(.2,1.4,.4,1);
+}
+.celebrate.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
+.celebrate .badge-ico { flex: none; width: 64px; height: 64px; font-size: 34px; border-radius: 20px; }
+.celebrate.show .badge-ico { animation: badge-pop 1s ease .2s both; }
+@keyframes badge-pop { 0% { transform: scale(.3) rotate(-30deg); } 60% { transform: scale(1.15) rotate(8deg); } 100% { transform: scale(1) rotate(-4deg); } }
+.celebrate-kicker { font-size: 12px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .04em; }
+.celebrate-title { font-size: 17px; font-weight: 800; margin: 2px 0; }
+.celebrate-desc { font-size: 13.5px; color: var(--muted); line-height: 1.35; }
+.confetti { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 2550; }

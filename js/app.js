@@ -73,7 +73,83 @@
       if (u) u.name = API.user.name;
     }
     buildIndexes(); render(); refreshMarkers();
-    if (S.loaded) setTimeout(maybeMotivate, 1200);
+    if (S.loaded) { checkNewBadges(); setTimeout(maybeMotivate, 1200); }
+  }
+
+  // ---------------- New badge celebration ----------------
+  // Badges already seen are remembered per user on this device. The first check only remembers them
+  // (no fireworks for old badges); after that every newly earned badge gets a popup with confetti.
+  const celebrateQueue = [];
+  let celebrating = false;
+  function checkNewBadges() {
+    if (!API.user || !window.BADGES || !S.loaded) return;
+    const key = 'badges_seen_' + API.user.id;
+    const st = userStats(API.user.id);
+    const earned = window.BADGES.filter(b => { try { return b.test(st); } catch (e) { return false; } }).map(b => b.id);
+    let seen = null;
+    try { seen = JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) {}
+    const fresh = seen ? earned.filter(id => !seen.includes(id)) : [];
+    try { localStorage.setItem(key, JSON.stringify([...new Set([...(seen || []), ...earned])])); } catch (e) {}
+    fresh.forEach(id => celebrateQueue.push(id));
+    if (!celebrating) nextCelebration();
+  }
+  function nextCelebration() {
+    const id = celebrateQueue.shift();
+    const b = id && window.BADGES.find(x => x.id === id);
+    if (!b) { celebrating = false; return; }
+    celebrating = true;
+    const [title, desc] = badgeText(b);
+    const el = document.createElement('div');
+    el.className = 'celebrate';
+    el.setAttribute('role', 'status');
+    el.innerHTML = `<span class="badge-ico" style="background:linear-gradient(135deg,${b.c[0]},${b.c[1]})">${b.emoji}</span>
+      <div class="celebrate-text"><div class="celebrate-kicker">${t('new_badge')}</div>
+      <div class="celebrate-title">${esc(title)}</div><div class="celebrate-desc">${esc(desc)}</div></div>`;
+    document.body.appendChild(el);
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('show')));
+    confetti(b.c);
+    setTimeout(() => {
+      el.classList.remove('show');
+      setTimeout(() => { el.remove(); nextCelebration(); }, 700);
+    }, 5500);
+  }
+  // Lightweight confetti on a full-screen canvas (skipped if the device asks for reduced motion)
+  function confetti(colors) {
+    try { if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch (e) {}
+    const c = document.createElement('canvas');
+    c.className = 'confetti';
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const W = window.innerWidth, H = window.innerHeight;
+    c.width = W * dpr; c.height = H * dpr;
+    document.body.appendChild(c);
+    const ctx = c.getContext('2d'); ctx.scale(dpr, dpr);
+    const palette = [...colors, '#e4572e', '#f2b01e', '#1f9d55', '#3b82f6', '#ec4899', '#ffffff'];
+    const parts = Array.from({ length: 160 }, (_, i) => {
+      const left = i % 2 === 0;                       // two bursts from the top corners
+      return {
+        x: left ? W * 0.15 : W * 0.85, y: H * 0.12,
+        vx: (left ? 1 : -1) * (2 + Math.random() * 6) + (Math.random() - 0.5) * 3,
+        vy: -4 - Math.random() * 7,
+        w: 6 + Math.random() * 6, h: 4 + Math.random() * 6,
+        rot: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 0.3,
+        color: palette[Math.floor(Math.random() * palette.length)],
+        round: Math.random() < 0.3,
+      };
+    });
+    const start = performance.now();
+    (function frame(now) {
+      const tt = now - start;
+      ctx.clearRect(0, 0, W, H);
+      ctx.globalAlpha = tt > 2600 ? Math.max(0, 1 - (tt - 2600) / 900) : 1;
+      parts.forEach(p => {
+        p.vy += 0.18; p.vx *= 0.99; p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillStyle = p.color;
+        if (p.round) { ctx.beginPath(); ctx.arc(0, 0, p.w / 2.5, 0, Math.PI * 2); ctx.fill(); }
+        else ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h * Math.abs(Math.cos(p.rot * 2)) + 1);
+        ctx.restore();
+      });
+      if (tt < 3500) requestAnimationFrame(frame); else c.remove();
+    })(start);
   }
 
   // ---------------- Friendly messages (js/messages.js) ----------------
@@ -103,6 +179,7 @@
   }
   function maybeMotivate() {
     const M = window.MESSAGES; if (!M || $('.motive')) return;
+    if (celebrating) { setTimeout(maybeMotivate, 3000); return; } // badges first, then the message
     let lastAt = 0;
     try { lastAt = Number(localStorage.getItem('motive_last_at')) || 0; } catch (e) {}
     if (Date.now() - lastAt < M.SHOW_EVERY_HOURS * 3600000) return;
@@ -130,6 +207,7 @@
   }
   function afterChange() {
     buildIndexes();
+    setTimeout(checkNewBadges, 400); // after the sheet closes
     API.store.set('cache_db', S.db);
     render(); refreshMarkers();
   }
@@ -199,7 +277,7 @@
     if (IX.statsCache[uid]) return IX.statsCache[uid];
     const rs = S.db.reviews.filter(r => r.user_id === uid);
     const s = { reviews: rs.length, photos: 0, places: 0, cat: {}, group: {}, low: 0, perfect: 0, minRating: 10,
-      night: 0, longest: 0, firsts: 0, placesAdded: S.db.places.filter(p => p.created_by === uid).length, hearts: 0, clowns: 0 };
+      night: 0, longest: 0, short: 0, firsts: 0, placesAdded: S.db.places.filter(p => p.created_by === uid).length, hearts: 0, clowns: 0 };
     const places = new Set();
     rs.forEach(r => {
       const d = IX.dish[r.dish_id]; const rating = +r.rating;
@@ -211,11 +289,13 @@
       s.minRating = Math.min(s.minRating, rating);
       const h = new Date(r.created_at).getHours(); if (h >= 23 || h < 5) s.night++;
       s.longest = Math.max(s.longest, String(r.comment || '').length);
+      if (String(r.comment || '').trim().length < 15) s.short++;
       const first = (IX.reviewsByDish[r.dish_id] || []).reduce((a, b) => (String(a.created_at) <= String(b.created_at) ? a : b));
       if (first.id === r.id) s.firsts++;
       const re = IX.react[r.id]; if (re) { s.hearts += re.heart; s.clowns += re.clown; }
     });
     s.places = places.size;
+    s.avg = rs.length ? rs.reduce((x, r) => x + (+r.rating), 0) / rs.length : 0;
     return (IX.statsCache[uid] = s);
   }
   const badgeText = b => b[I18N.lang] || b.en;
@@ -538,7 +618,7 @@
     return `<div class="review ${mine ? 'mine' : ''}">
       <div class="review-head">
         <button class="who-btn" data-act="open-user" data-id="${esc(r.user_id)}">${avatarHtml(r.user_id)}
-        <span class="review-who"><b>${esc(name)}</b>${mine ? ` <span class="tag">${t('you')}</span>` : ''}
+        <span class="review-who"><span class="who-line"><b>${esc(name)}</b>${mine ? `<span class="tag">${t('you')}</span>` : ''}</span>
           <span class="item-sub small">${fmtDate(r.created_at)}${edited ? ' · ' + t('edited') : ''}</span></span></button>
         <span class="badge ${ratingClass(+r.rating)}">${+r.rating}<small>/10</small></span>
       </div>
