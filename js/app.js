@@ -8,11 +8,11 @@
 
   // ---------------- State ----------------
   const S = {
-    db: { places: [], dishes: [], reviews: [], users: [] },
+    db: { places: [], dishes: [], reviews: [], users: [], reactions: [], wishlist: [] },
     stack: [{ view: 'map' }],
     placesQuery: '', placesType: '', placesLimit: 60,
     mapOnlyReviewed: false, topMode: 'top', topCat: { g: '', s: '' },
-    dishQuery: '', dishCat: { g: '', s: '' }, placesLunch: false,
+    dishQuery: '', dishCat: { g: '', s: '' }, placesLunch: false, placesOpen: false,
     loaded: false, offline: false,
   };
   let IX = {};
@@ -30,6 +30,15 @@
       reviewsByDish: by(db.reviews, 'dish_id'),
       reviewsByPlace: by(db.reviews, 'place_id'),
     };
+    const me = API.user && API.user.id;
+    IX.react = {};
+    (db.reactions || []).forEach(x => {
+      const o = IX.react[x.review_id] = IX.react[x.review_id] || { heart: 0, clown: 0, mine: '' };
+      if (o[x.kind] !== undefined) o[x.kind]++;
+      if (x.user_id === me) o.mine = x.kind;
+    });
+    IX.wish = new Set(db.wishlist || []);
+    IX.statsCache = {};
     const all = db.reviews.map(r => +r.rating);
     IX.mean = all.length ? all.reduce((a, b) => a + b, 0) / all.length : 7;
     IX.dishStat = {};
@@ -51,6 +60,7 @@
   async function loadData(showErrors) {
     try {
       const data = await API.call('getAll');
+      data.reactions = data.reactions || []; data.wishlist = data.wishlist || [];
       S.db = data; S.offline = false; S.loaded = true;
       API.store.set('cache_db', data);
     } catch (e) {
@@ -158,6 +168,70 @@
       sameYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' });
   }
   const userName = id => (API.user && API.user.id === id) ? API.user.name : (IX.user[id] ? IX.user[id].name : '?');
+  const userAvatarId = id => (API.user && API.user.id === id) ? (API.user.avatar_id || '') : ((IX.user[id] || {}).avatar_id || '');
+  function avatarHtml(id, cls = '') {
+    const a = userAvatarId(id);
+    return a ? `<img class="avatar ${cls}" src="${esc(API.photoUrl(a, 200))}" alt="">`
+      : `<div class="avatar ${cls}">${initials(userName(id))}</div>`;
+  }
+  // Opening hours: "10:00"–"22:00"; overnight ("18:00"–"02:00") works too. null = unknown
+  const toMin = hm => { const [h, m] = String(hm).split(':').map(Number); return h * 60 + m; };
+  function isOpenNow(p) {
+    if (!p.open_from || !p.open_to) return null;
+    const d = new Date(), now = d.getHours() * 60 + d.getMinutes(), f = toMin(p.open_from), to = toMin(p.open_to);
+    if (f === to) return true;
+    return f < to ? now >= f && now < to : now >= f || now < to;
+  }
+  const hoursText = p => p.open_from && p.open_to ? `${p.open_from}–${p.open_to}`
+    : p.open_from ? `${t('lunch_from')} ${p.open_from}` : p.open_to ? `${t('lunch_to')} ${p.open_to}` : '';
+  function openTag(p) {
+    const o = isOpenNow(p);
+    return o === null ? '' : `<span class="open-tag ${o ? 'yes' : 'no'}">${o ? t('open_now') : t('closed_now')}</span>`;
+  }
+  const iReviewed = dishId => !!API.user && (IX.reviewsByDish[dishId] || []).some(r => r.user_id === API.user.id);
+  function wishBtn(dishId, small) {
+    if (iReviewed(dishId)) return '';
+    const on = IX.wish.has(dishId);
+    return `<button class="btn ${small ? 'sm wish-sm' : 'sm'} ghost wish ${on ? 'on' : ''}" data-act="wish-toggle" data-id="${esc(dishId)}">${on ? '🔖 ' + t('in_wishlist') : '🔖 ' + t('want_to_try')}</button>`;
+  }
+  // Stats for badges (see js/badges.js)
+  function userStats(uid) {
+    if (IX.statsCache[uid]) return IX.statsCache[uid];
+    const rs = S.db.reviews.filter(r => r.user_id === uid);
+    const s = { reviews: rs.length, photos: 0, places: 0, cat: {}, group: {}, low: 0, perfect: 0, minRating: 10,
+      night: 0, longest: 0, firsts: 0, placesAdded: S.db.places.filter(p => p.created_by === uid).length, hearts: 0, clowns: 0 };
+    const places = new Set();
+    rs.forEach(r => {
+      const d = IX.dish[r.dish_id]; const rating = +r.rating;
+      if (r.photo_id) s.photos++;
+      places.add(r.place_id);
+      if (d) { const k = I18N.normCat(d.category), g = I18N.groupOf(k); s.cat[k] = (s.cat[k] || 0) + 1; s.group[g] = (s.group[g] || 0) + 1; }
+      if (rating <= 2) s.low++;
+      if (rating === 10) s.perfect++;
+      s.minRating = Math.min(s.minRating, rating);
+      const h = new Date(r.created_at).getHours(); if (h >= 23 || h < 5) s.night++;
+      s.longest = Math.max(s.longest, String(r.comment || '').length);
+      const first = (IX.reviewsByDish[r.dish_id] || []).reduce((a, b) => (String(a.created_at) <= String(b.created_at) ? a : b));
+      if (first.id === r.id) s.firsts++;
+      const re = IX.react[r.id]; if (re) { s.hearts += re.heart; s.clowns += re.clown; }
+    });
+    s.places = places.size;
+    return (IX.statsCache[uid] = s);
+  }
+  const badgeText = b => b[I18N.lang] || b.en;
+  function badgesHtml(uid, showLocked) {
+    const all = window.BADGES || []; const st = userStats(uid);
+    const earned = all.filter(b => { try { return b.test(st); } catch (e) { return false; } });
+    const list = showLocked ? all : earned;
+    if (!list.length) return `<div class="empty small">${t('no_badges')}</div>`;
+    return `<div class="badges">${list.map(b => {
+      const has = earned.includes(b);
+      return `<button class="badge-tile ${has ? '' : 'locked'}" data-act="badge" data-id="${b.id}" data-has="${has ? 1 : 0}">
+        <span class="badge-ico" style="background:linear-gradient(135deg,${b.c[0]},${b.c[1]})">${b.emoji}</span>
+        <span class="badge-name">${esc(badgeText(b)[0])}</span></button>`;
+    }).join('')}</div>`;
+  }
+  const earnedCount = uid => (window.BADGES || []).filter(b => { try { return b.test(userStats(uid)); } catch (e) { return false; } }).length;
   const initials = name => esc(String(name || '?').trim().charAt(0).toUpperCase());
   const icon = name => `<svg class="ic" aria-hidden="true"><use href="#i-${name}"/></svg>`;
   // A place can have several types (stored as "cafe,bar")
@@ -215,6 +289,7 @@
   const IMAGE_PROFILES = {
     photo: { maxSide: 1280, targetKB: 250 },  // dish and review photos
     menu: { maxSide: 1800, targetKB: 500 },   // business lunch menus: bigger, so small text stays readable
+    avatar: { maxSide: 400, targetKB: 60, square: true }, // profile pictures, cropped to a square
   };
   async function loadBitmap(file) {
     if (window.createImageBitmap) {
@@ -231,16 +306,20 @@
   async function optimizeImage(file, profileName) {
     const prof = IMAGE_PROFILES[profileName] || IMAGE_PROFILES.photo;
     const src = await loadBitmap(file);
-    let side = Math.min(prof.maxSide, Math.max(src.width, src.height));
+    // square profiles use the centre square of the picture
+    const cs = prof.square ? Math.min(src.width, src.height) : 0;
+    const sx = prof.square ? (src.width - cs) / 2 : 0, sy = prof.square ? (src.height - cs) / 2 : 0;
+    const sw = prof.square ? cs : src.width, sh = prof.square ? cs : src.height;
+    let side = Math.min(prof.maxSide, Math.max(sw, sh));
     let out = '';
     for (let round = 0; round < 4; round++) {
-      const k = side / Math.max(src.width, src.height);
+      const k = side / Math.max(sw, sh);
       const c = document.createElement('canvas');
-      c.width = Math.max(1, Math.round(src.width * k)); c.height = Math.max(1, Math.round(src.height * k));
+      c.width = Math.max(1, Math.round(sw * k)); c.height = Math.max(1, Math.round(sh * k));
       const ctx = c.getContext('2d');
       ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); // transparent PNGs get a white background
       ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(src, 0, 0, c.width, c.height);
+      ctx.drawImage(src, sx, sy, sw, sh, 0, 0, c.width, c.height);
       for (const q of [0.85, 0.78, 0.7, 0.62]) {
         out = c.toDataURL('image/jpeg', q);
         if (dataUrlKB(out) <= prof.targetKB) break;
@@ -273,7 +352,9 @@
   API.onAuth(u => {
     if (u && $('.sheet-wrap')) closeSheet();
     if (u) toast((I18N.lang === 'ru' ? 'Привет, ' : 'Hi, ') + u.name);
-    render();
+    if (!u) S.db.wishlist = [];
+    buildIndexes(); render();
+    if (u) loadData(); // fetch the personal "Want to try" list
     if (u && afterLogin) { const fn = afterLogin; afterLogin = null; setTimeout(fn, 250); }
     if (!u) afterLogin = null;
   });
@@ -289,6 +370,7 @@
     let title = titles[c.view];
     if (c.view === 'place') title = (IX.place[c.id] || {}).name || '';
     if (c.view === 'dish') title = (IX.dish[c.id] || {}).name || '';
+    if (c.view === 'user') title = userName(c.id);
     $('#hdr-title').textContent = title || CFG.APP_NAME;
     $('#hdr-back').hidden = S.stack.length < 2;
     $('#hdr-lang').textContent = I18N.lang === 'ru' ? 'EN' : 'RU';
@@ -306,7 +388,7 @@
     const v = $('#view');
     if (onMap) { v.innerHTML = ''; renderMapOverlay(); return; }
     if (!S.loaded && !S.db.places.length) { v.innerHTML = `<div class="empty">${t('loading')}</div>`; return; }
-    const fn = { places: viewPlaces, top: viewTop, profile: viewProfile, place: viewPlace, dish: viewDish }[c.view];
+    const fn = { places: viewPlaces, top: viewTop, profile: viewProfile, place: viewPlace, dish: viewDish, user: viewUser }[c.view];
     v.innerHTML = fn ? fn(c) : '';
     const g = $('.gbtn', v); if (g) API.renderSignInButton(g).catch(() => {});
   }
@@ -314,7 +396,8 @@
   // ----- Places list -----
   function filteredPlaces() {
     const q = S.placesQuery.trim().toLowerCase().replace(/ё/g, 'е');
-    let list = S.db.places.filter(p => (!S.placesType || placeTypes(p).includes(S.placesType)) && (!S.placesLunch || hasLunch(p)));
+    let list = S.db.places.filter(p => (!S.placesType || placeTypes(p).includes(S.placesType)) && (!S.placesLunch || hasLunch(p))
+      && (!S.placesOpen || isOpenNow(p) === true));
     if (q) {
       list = list.filter(p => {
         const hay = (p.name + ' ' + (p.address || '') + ' ' +
@@ -329,7 +412,7 @@
     const st = IX.placeStat[p.id];
     return `<button class="item" data-act="open-place" data-id="${esc(p.id)}">
       <div class="item-main"><div class="item-title">${esc(p.name)}</div>
-      <div class="item-sub">${esc(I18N.types(placeTypes(p)))}${p.address ? ' · ' + esc(p.address) : ''}</div>
+      <div class="item-sub">${esc(I18N.types(placeTypes(p)))}${p.address ? ' · ' + esc(p.address) : ''} ${openTag(p)}</div>
       <div class="item-sub small">${st.dishes ? t('dishes_n', st.dishes) + ' · ' : ''}${t('reviews_n', st.count)}${hasLunch(p) ? ` · <span class="lunch-tag">${t('has_lunch')}${lunchTime(p) ? ' ' + lunchTime(p) : ''}</span>` : ''}</div></div>
       ${badge(st.avg, st.count)}</button>`;
   }
@@ -360,7 +443,8 @@
   }
   function viewPlaces() {
     const usedTypes = I18N.TYPES.filter(ty => S.db.places.some(p => placeTypes(p).includes(ty)));
-    const lunchChip = `<button class="chip ${S.placesLunch ? 'on' : ''}" data-act="places-lunch">${icon('lunch')} ${t('has_lunch')}</button><span class="chip-sep"></span>`;
+    const lunchChip = `<button class="chip ${S.placesOpen ? 'on' : ''}" data-act="places-open">${icon('clock')} ${t('open_now')}</button>
+      <button class="chip ${S.placesLunch ? 'on' : ''}" data-act="places-lunch">${icon('lunch')} ${t('has_lunch')}</button><span class="chip-sep"></span>`;
     return `<div class="pad">
       <div class="search">${icon('search')}<input id="places-q" type="search" placeholder="${t('search_places')}" value="${esc(S.placesQuery)}"></div>
       ${chips(usedTypes, S.placesType, 'places-type', I18N.type, lunchChip)}
@@ -402,6 +486,8 @@
           <div class="item-sub">${esc(I18N.types(placeTypes(p)))}</div>
           <h1>${esc(p.name)}</h1>
           ${p.address ? `<div class="item-sub">${icon('pin')} ${esc(p.address)}</div>` : ''}
+          <div class="item-sub hours-row">${icon('clock')} ${hoursText(p) ? esc(hoursText(p)) + ' ' + openTag(p) : `<span class="muted">${t('hours_unknown')}</span>`}
+            <button class="link small" data-act="edit-hours" data-id="${esc(p.id)}">${hoursText(p) ? t('edit') : t('add')}</button></div>
         </div>${badge(st.avg, st.count)}</div>
         <div class="item-sub small">${t('dishes_n', st.dishes)} · ${t('reviews_n', st.count)}</div>
         <div class="row-btns left">
@@ -446,20 +532,26 @@
     const d = IX.dish[r.dish_id]; const p = IX.place[r.place_id];
     const canDelete = mine || API.isAdmin;
     const edited = r.updated_at && r.created_at && (new Date(r.updated_at) - new Date(r.created_at) > 60000);
+    const re = IX.react[r.id] || { heart: 0, clown: 0, mine: '' };
+    const reactBtn = (kind, emoji) => `<button class="react ${re.mine === kind ? 'on' : ''}" ${mine ? 'disabled' : ''}
+      data-act="react" data-id="${esc(r.id)}" data-k="${kind}" aria-label="${t('react_' + kind)}">${emoji}<span>${re[kind] || ''}</span></button>`;
     return `<div class="review ${mine ? 'mine' : ''}">
       <div class="review-head">
-        <div class="avatar">${initials(name)}</div>
-        <div class="review-who"><b>${esc(name)}</b>${mine ? ` <span class="tag">${t('you')}</span>` : ''}
-          <div class="item-sub small">${fmtDate(r.created_at)}${edited ? ' · ' + t('edited') : ''}</div></div>
+        <button class="who-btn" data-act="open-user" data-id="${esc(r.user_id)}">${avatarHtml(r.user_id)}
+        <span class="review-who"><b>${esc(name)}</b>${mine ? ` <span class="tag">${t('you')}</span>` : ''}
+          <span class="item-sub small">${fmtDate(r.created_at)}${edited ? ' · ' + t('edited') : ''}</span></span></button>
         <span class="badge ${ratingClass(+r.rating)}">${+r.rating}<small>/10</small></span>
       </div>
       ${withContext && d ? `<button class="ctx" data-act="open-dish" data-id="${esc(d.id)}">${esc(d.name)} <span class="muted">${t('at_place')} ${esc(p ? p.name : '')}</span></button>` : ''}
       ${r.comment ? `<p class="review-text">${esc(r.comment)}</p>` : ''}
       ${r.photo_id ? `<img class="review-photo" loading="lazy" src="${esc(API.photoUrl(r.photo_id, 800))}" data-act="view-photo" data-src="${esc(API.photoUrl(r.photo_id, 1600))}" alt="">` : ''}
-      ${(mine || canDelete) && !withContext ? `<div class="row-btns left">
-        ${mine ? `<button class="btn ghost sm" data-act="edit-review" data-id="${esc(r.dish_id)}">${icon('edit')} ${t('edit')}</button>` : ''}
-        ${canDelete ? `<button class="btn ghost sm danger-text" data-act="delete-review" data-id="${esc(r.id)}">${icon('trash')} ${t('delete')}</button>` : ''}
-      </div>` : ''}
+      <div class="review-foot">
+        ${reactBtn('heart', '❤️')}${reactBtn('clown', '🤡')}
+        <span class="grow"></span>
+        ${withContext && !mine && d ? wishBtn(d.id, true) : ''}
+        ${!withContext && mine ? `<button class="btn ghost sm" data-act="edit-review" data-id="${esc(r.dish_id)}">${icon('edit')} ${t('edit')}</button>` : ''}
+        ${!withContext && canDelete ? `<button class="btn ghost sm danger-text" data-act="delete-review" data-id="${esc(r.id)}" aria-label="${t('delete')}">${icon('trash')}</button>` : ''}
+      </div>
     </div>`;
   }
   function viewDish(c) {
@@ -485,7 +577,8 @@
           <button class="btn ghost sm" data-act="edit-dish" data-id="${esc(d.id)}">${icon('edit')} ${t('edit')}</button>
           <button class="btn ghost sm danger-text" data-act="delete-dish" data-id="${esc(d.id)}">${icon('trash')} ${t('delete')}</button></div>` : ''}
       </div>
-      ${!d.photo_id ? `<button class="btn ghost sm add-photo-btn" data-act="add-dish-photo" data-id="${esc(d.id)}">${icon('camera')} ${t('add_dish_photo')}</button>` : ''}
+      <div class="row-btns left dish-actions">${wishBtn(d.id)}
+      ${!d.photo_id ? `<button class="btn ghost sm add-photo-btn" data-act="add-dish-photo" data-id="${esc(d.id)}">${icon('camera')} ${t('add_dish_photo')}</button>` : ''}</div>
       <button class="btn primary wide" data-act="edit-review" data-id="${esc(d.id)}">${icon('star')} ${mine ? t('edit_review') : t('write_review')}</button>
       <div class="reviews">${reviews.length ? reviews.map(r => reviewCard(r)).join('') : `<div class="empty">${t('no_reviews')}</div>`}</div>
     </div>`;
@@ -508,6 +601,18 @@
   }
 
   // ----- Profile -----
+  function profileHead(uid, own) {
+    const u = own ? API.user : (IX.user[uid] || { name: '?', role: 'user' });
+    const st = userStats(uid);
+    return `<div class="card profile">
+        <${own ? 'button class="avatar-edit" data-act="edit-avatar"' : 'div class="avatar-edit"'} aria-label="${t('change_avatar')}">${avatarHtml(uid, 'big')}${own ? `<span class="cam">${icon('camera')}</span>` : ''}</${own ? 'button' : 'div'}>
+        <div class="grow"><div class="item-title">${esc(userName(uid))} ${u.role === 'admin' ? `<span class="tag">${t('admin')}</span>` : ''}</div>
+          <div class="stats-row">
+            <span>${t('reviews_n', st.reviews)}</span><span>${t('places_n', st.places)}</span>
+            <span><b>${st.hearts}</b> ❤️</span><span><b>${earnedCount(uid)}</b> 🏅</span>
+          </div></div>
+      </div>`;
+  }
   function viewProfile() {
     const u = API.user;
     const langs = `<div class="card"><div class="label">${t('language')}</div><div class="seg">
@@ -517,18 +622,37 @@
       <p class="muted small center">Map data © OpenStreetMap contributors</p>`;
     if (!u) return `<div class="pad"><div class="card center"><p>${t('sign_in_needed')}</p>${signInBlock()}</div>${langs}${foot}</div>`;
     const mine = S.db.reviews.filter(r => r.user_id === u.id).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    const wish = [...IX.wish].map(id => IX.dish[id]).filter(Boolean);
     return `<div class="pad">
-      <div class="card profile">
-        <div class="avatar big">${initials(u.name)}</div>
-        <div class="grow"><div class="item-title">${esc(u.name)} ${u.role === 'admin' ? `<span class="tag">${t('admin')}</span>` : ''}</div>
-        <div class="item-sub small">${t('reviews_n', mine.length)}</div></div>
-      </div>
+      ${profileHead(u.id, true)}
       <div class="row-btns"><button class="btn ghost" data-act="edit-name">${icon('edit')} ${t('change_name')}</button>
       <button class="btn ghost" data-act="sign-out">${t('sign_out')}</button></div>
+      <h3>🔖 ${t('wishlist')}</h3>
+      ${wish.length ? `<div class="list compact">${wish.map(d => {
+        const p = IX.place[d.place_id] || {}; const st = IX.dishStat[d.id];
+        return `<div class="item wish-item"><button class="item-main link-like" data-act="open-dish" data-id="${esc(d.id)}">
+            <div class="item-title">${esc(d.name)}</div><div class="item-sub">${esc(p.name || '')}${fmtPrice(d.price) ? ' · ' + fmtPrice(d.price) : ''}</div></button>
+          ${badge(st.avg, st.count)}
+          <button class="btn primary sm" data-act="review-from-list" data-id="${esc(d.id)}">${icon('star')} ${t('rate_it')}</button>
+          <button class="icon-btn" data-act="wish-remove" data-id="${esc(d.id)}" aria-label="${t('remove')}">${icon('x')}</button></div>`;
+      }).join('')}</div>` : `<div class="empty small">${t('wishlist_empty')}</div>`}
+      <h3>${t('badges')} · ${earnedCount(u.id)}/${(window.BADGES || []).length}</h3>
+      ${badgesHtml(u.id, true)}
       ${langs}
       <h3>${t('my_reviews')}</h3>
       <div class="reviews">${mine.length ? mine.map(r => reviewCard(r, true)).join('') : `<div class="empty">${t('nothing_here')}</div>`}</div>
       ${foot}</div>`;
+  }
+  function viewUser(c) {
+    if (!IX.user[c.id] && !S.db.reviews.some(r => r.user_id === c.id)) return `<div class="empty">${I18N.err('not_found')}</div>`;
+    const rs = S.db.reviews.filter(r => r.user_id === c.id).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    return `<div class="pad">
+      ${profileHead(c.id, false)}
+      <h3>${t('badges')} · ${earnedCount(c.id)}</h3>
+      ${badgesHtml(c.id, false)}
+      <h3>${t('reviews_n', rs.length)}</h3>
+      <div class="reviews">${rs.length ? rs.map(r => reviewCard(r, true)).join('') : `<div class="empty">${t('nothing_here')}</div>`}</div>
+    </div>`;
   }
 
   // ---------------- Map ----------------
@@ -565,6 +689,7 @@
       });
       m.bindPopup(`<div class="pop"><b>${esc(p.name)}</b><div class="item-sub">${esc(I18N.types(placeTypes(p)))}${p.address ? ' · ' + esc(p.address) : ''}</div>
         <div class="item-sub">${has ? '★ ' + st.avg.toFixed(1) + ' · ' : ''}${t('reviews_n', st.count)}</div>
+        ${hoursText(p) ? `<div class="item-sub">🕐 ${esc(hoursText(p))} ${openTag(p)}</div>` : ''}
         ${hasLunch(p) ? `<div class="item-sub lunch-tag">${t('has_lunch')}${lunchTime(p) ? ' ' + esc(lunchTime(p)) : ''}</div>` : ''}
         <button class="btn primary sm" data-act="open-place" data-id="${esc(p.id)}">${t('open')}</button></div>`);
       markerLayer.addLayer(m);
@@ -600,6 +725,8 @@
       <div class="label">${t('types_pick')}</div>
       <div class="chips wrap type-pick">${I18N.TYPES.map(k => `<button type="button" class="chip ${chosen.has(k) ? 'on' : ''}" data-k="${k}">${esc(I18N.type(k))}</button>`).join('')}</div>
       <label>${t('address')} <span class="muted">(${t('optional')})</span><input name="address" maxlength="120" value="${esc(place.address)}"></label>
+      ${edit ? '' : `<div class="label">${t('hours')} <span class="muted">(${t('optional')})</span></div>
+      <div class="row2"><label>${t('lunch_from')}<input name="open_from" type="time"></label><label>${t('lunch_to')}<input name="open_to" type="time"></label></div>`}
       <button class="btn primary wide" type="submit">${t('save')}</button></form>`, w => {
       const f = $('#f-place', w); $('input', f).focus();
       $('.type-pick', f).addEventListener('click', e => {
@@ -742,7 +869,9 @@
         const res = await busy(btn, () => API.call('saveReview', { review: {
           dish_id: dish.id, rating, comment: new FormData(f).get('comment'), photo: ph.photo, removePhoto: ph.removePhoto } })).catch(() => null);
         if (!res) return;
-        upsert('reviews', res); closeSheet(); afterChange(); toast(t('saved'));
+        upsert('reviews', res);
+        S.db.wishlist = (S.db.wishlist || []).filter(x => x !== res.dish_id); // tried it → off the list
+        closeSheet(); afterChange(); toast(t('saved'));
       });
     });
   }
@@ -784,6 +913,53 @@
     });
   }
 
+  function hoursForm(place) {
+    openSheet(t('hours'), `<form class="form" id="f-hours">
+      <div class="label">${esc(place.name)}</div>
+      <div class="row2"><label>${t('lunch_from')}<input name="open_from" type="time" value="${esc(place.open_from || '')}"></label>
+      <label>${t('lunch_to')}<input name="open_to" type="time" value="${esc(place.open_to || '')}"></label></div>
+      <p class="muted small">${t('hours_hint')}</p>
+      <button class="btn primary wide" type="submit">${t('save')}</button></form>`, w => {
+      const f = $('#f-hours', w);
+      f.addEventListener('submit', async e => {
+        e.preventDefault();
+        const data = Object.fromEntries(new FormData(f));
+        const res = await busy($('button[type=submit]', f), () => API.call('updateHours', { id: place.id, ...data })).catch(() => null);
+        if (!res) return;
+        upsert('places', res); closeSheet(); afterChange(); toast(t('saved'));
+      });
+    });
+  }
+  function avatarForm() {
+    const cur = API.user.avatar_id || '';
+    openSheet(t('change_avatar'), `<form class="form" id="f-avatar">
+      ${photoPickerHtml(cur, t('choose_photo'))}
+      <button class="btn primary wide" type="submit">${t('save')}</button></form>`, w => {
+      const f = $('#f-avatar', w);
+      const ph = bindPhotoPicker(f, 'avatar');
+      if (!cur) $('.ph-in', f).click();
+      f.addEventListener('submit', async e => {
+        e.preventDefault();
+        if (ph.busy) return;
+        if (!ph.photo && !ph.removePhoto) { closeSheet(); return; }
+        const res = await busy($('button[type=submit]', f), () => API.call('updateProfile',
+          ph.photo ? { avatar: ph.photo } : { removeAvatar: true })).catch(() => null);
+        if (!res) return;
+        API.setUser({ avatar_id: res.avatar_id });
+        const u = S.db.users.find(x => x.id === res.id); if (u) u.avatar_id = res.avatar_id; else S.db.users.push(res);
+        closeSheet(); afterChange(); toast(t('saved'));
+      });
+    });
+  }
+  function badgeSheet(id, has) {
+    const b = (window.BADGES || []).find(x => x.id === id); if (!b) return;
+    const [title, desc] = badgeText(b);
+    openSheet(t('badge'), `<div class="badge-detail ${has ? '' : 'locked'}">
+      <span class="badge-ico big" style="background:linear-gradient(135deg,${b.c[0]},${b.c[1]})">${b.emoji}</span>
+      <h2>${esc(title)}</h2><p>${esc(desc)}</p>
+      <span class="tag">${has ? t('badge_earned') : '🔒 ' + t('badge_locked')}</span></div>`);
+  }
+
   function nameForm() {
     openSheet(t('change_name'), `<form class="form" id="f-name">
       <label>${t('display_name')}<input name="name" required maxlength="40" value="${esc(API.user.name)}"></label>
@@ -811,6 +987,38 @@
     'dish-s': el => { S.dishCat.s = el.dataset.v; render(); },
     'top-g': el => { S.topCat = { g: el.dataset.v, s: '' }; render(); },
     'top-s': el => { S.topCat.s = el.dataset.v; render(); },
+    'wish-toggle': async el => {
+      const id = el.dataset.id;
+      if (!(await requireLogin())) return;
+      const on = !IX.wish.has(id);
+      const res = await busy(el, () => API.call('wishToggle', { dish_id: id, on })).catch(() => null); if (!res) return;
+      S.db.wishlist = S.db.wishlist.filter(x => x !== id); if (on) S.db.wishlist.push(id);
+      afterChange(); toast(on ? t('added_wishlist') : t('removed_wishlist'));
+    },
+    'wish-remove': async el => {
+      const id = el.dataset.id;
+      const res = await busy(el, () => API.call('wishToggle', { dish_id: id, on: false })).catch(() => null); if (!res) return;
+      S.db.wishlist = S.db.wishlist.filter(x => x !== id); afterChange();
+    },
+    'review-from-list': el => { const d = IX.dish[el.dataset.id]; if (d) reviewForm(d); },
+    'react': async el => {
+      if (el.disabled) return;
+      if (!(await requireLogin())) return;
+      const rid = el.dataset.id, kind = el.dataset.k;
+      const res = await busy(null, () => API.call('react', { review_id: rid, kind })).catch(() => null); if (!res) return;
+      S.db.reactions = S.db.reactions.filter(x => !(x.review_id === rid && x.user_id === API.user.id));
+      if (res.kind) S.db.reactions.push({ review_id: rid, user_id: API.user.id, kind: res.kind });
+      afterChange();
+    },
+    'open-user': el => {
+      const id = el.dataset.id;
+      if (API.user && id === API.user.id) { switchTab('profile'); return; }
+      go('user', { id });
+    },
+    'edit-avatar': () => avatarForm(),
+    'badge': el => badgeSheet(el.dataset.id, el.dataset.has === '1'),
+    'edit-hours': async el => { const id = el.dataset.id; if (await requireLogin(() => hoursForm(IX.place[id]))) hoursForm(IX.place[id]); },
+    'places-open': () => { S.placesOpen = !S.placesOpen; S.placesLimit = 60; render(); },
     'add-dish-photo': async el => {
       const id = el.dataset.id;
       if (await requireLogin(() => IX.dish[id] && dishPhotoForm(IX.dish[id]))) dishPhotoForm(IX.dish[id]);

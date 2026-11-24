@@ -1,9 +1,9 @@
 // Service worker: makes the app installable and opens instantly / offline.
 // Bump VERSION after you change any app file so phones pick up the update.
-const VERSION = 'kotletka-v8';
+const VERSION = 'kotletka-v9';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
-  'js/config.js', 'js/i18n.js', 'js/messages.js', 'js/api.js', 'js/app.js',
+  'js/config.js', 'js/i18n.js', 'js/messages.js', 'js/badges.js', 'js/api.js', 'js/app.js',
   'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
 ];

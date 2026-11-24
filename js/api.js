@@ -125,6 +125,11 @@
     CONFIGURED, call, onAuth, restore, signOut, renderSignInButton, ensureSignedIn, photoUrl, store,
     get user() { return user; },
     get isAdmin() { return !!user && user.role === 'admin'; },
+    setUser(fields) {
+      if (!user) return;
+      Object.assign(user, fields);
+      store.set('auth', { token, user });
+    },
     setUserName(name) {
       if (!user) return;
       user.name = name;
