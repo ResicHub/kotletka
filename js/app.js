@@ -209,23 +209,49 @@
     finally { if (btn) { btn.disabled = false; btn.classList.remove('loading'); } }
   }
 
-  // Resize photos in the browser so uploads stay small and fast.
-  function resizeImage(file, maxSide) {
+  // ---------------- Image optimization ----------------
+  // Every photo is converted to JPEG in the browser before upload: medium resolution, compressed until it fits
+  // the target size. Also drops metadata (GPS location etc.) and fixes rotation. Keeps Google Drive from filling up.
+  const IMAGE_PROFILES = {
+    photo: { maxSide: 1280, targetKB: 250 },  // dish and review photos
+    menu: { maxSide: 1800, targetKB: 500 },   // business lunch menus: bigger, so small text stays readable
+  };
+  async function loadBitmap(file) {
+    if (window.createImageBitmap) {
+      try { return await createImageBitmap(file, { imageOrientation: 'from-image' }); } catch (e) { /* fall back */ }
+    }
     return new Promise((resolve, reject) => {
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        const k = Math.min(1, maxSide / Math.max(img.width, img.height));
-        const c = document.createElement('canvas');
-        c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
-        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-        URL.revokeObjectURL(url);
-        resolve(c.toDataURL('image/jpeg', 0.82));
-      };
+      const img = new Image(); const url = URL.createObjectURL(file);
+      img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
       img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('bad image')); };
       img.src = url;
     });
   }
+  const dataUrlKB = d => Math.round((d.length - d.indexOf(',') - 1) * 0.75 / 1024);
+  async function optimizeImage(file, profileName) {
+    const prof = IMAGE_PROFILES[profileName] || IMAGE_PROFILES.photo;
+    const src = await loadBitmap(file);
+    let side = Math.min(prof.maxSide, Math.max(src.width, src.height));
+    let out = '';
+    for (let round = 0; round < 4; round++) {
+      const k = side / Math.max(src.width, src.height);
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(src.width * k)); c.height = Math.max(1, Math.round(src.height * k));
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); // transparent PNGs get a white background
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(src, 0, 0, c.width, c.height);
+      for (const q of [0.85, 0.78, 0.7, 0.62]) {
+        out = c.toDataURL('image/jpeg', q);
+        if (dataUrlKB(out) <= prof.targetKB) break;
+      }
+      if (dataUrlKB(out) <= prof.targetKB) break;
+      side = Math.round(side * 0.8); // still too big: make it smaller and try again
+    }
+    if (src.close) src.close();
+    return { dataUrl: out, beforeKB: Math.round(file.size / 1024), afterKB: dataUrlKB(out) };
+  }
+  const fmtKB = kb => kb >= 1024 ? (kb / 1024).toFixed(1) + ' MB' : kb + ' KB';
 
   // ---------------- Sign-in ----------------
   // `retry` runs automatically after a successful sign-in, so the user doesn't have to tap again.
@@ -407,6 +433,7 @@
     return `<div class="card lunch-card">
       <div class="lunch-head">${icon('lunch')}<span class="grow"><b>${t('lunch')}</b>${lunchTime(p) ? ` <span class="lunch-time">${esc(lunchTime(p))}</span>` : ''}</span>${editBtn(t('edit'))}</div>
       ${p.lunch_menu ? `<p class="lunch-menu">${esc(p.lunch_menu)}</p>` : ''}
+      ${p.lunch_photo_id ? `<img class="lunch-photo" loading="lazy" src="${esc(API.photoUrl(p.lunch_photo_id, 800))}" data-act="view-photo" data-src="${esc(API.photoUrl(p.lunch_photo_id, 2000))}" alt="${t('lunch_menu_photo')}">` : ''}
       ${lunchDishes.length ? `<div class="label small muted">${t('lunch_dishes')}</div><div class="list compact inset">${lunchDishes.map(d => dishRow(d)).join('')}</div>` : ''}
       <button class="btn ghost sm" data-act="add-lunch-dish" data-id="${esc(p.id)}">${icon('plus')} ${t('add_dish')}</button>
     </div>`;
@@ -458,6 +485,7 @@
           <button class="btn ghost sm" data-act="edit-dish" data-id="${esc(d.id)}">${icon('edit')} ${t('edit')}</button>
           <button class="btn ghost sm danger-text" data-act="delete-dish" data-id="${esc(d.id)}">${icon('trash')} ${t('delete')}</button></div>` : ''}
       </div>
+      ${!d.photo_id ? `<button class="btn ghost sm add-photo-btn" data-act="add-dish-photo" data-id="${esc(d.id)}">${icon('camera')} ${t('add_dish_photo')}</button>` : ''}
       <button class="btn primary wide" data-act="edit-review" data-id="${esc(d.id)}">${icon('star')} ${mine ? t('edit_review') : t('write_review')}</button>
       <div class="reviews">${reviews.length ? reviews.map(r => reviewCard(r)).join('') : `<div class="empty">${t('no_reviews')}</div>`}</div>
     </div>`;
@@ -619,6 +647,7 @@
       sSel.required = !subWrap.hidden;
       f.addEventListener('submit', async e => {
         e.preventDefault();
+        if (ph.busy) return;
         const data = Object.fromEntries(new FormData(f));
         data.category = (I18N.CAT_TREE[data.group] || []).length ? data.sub : data.group;
         delete data.group; delete data.sub;
@@ -635,27 +664,53 @@
     });
   }
   // Photo picker used by the dish and review forms. Returns live state {photo, removePhoto}.
-  function photoPickerHtml(existingId) {
+  function photoPickerHtml(existingId, label) {
     return `<div class="photo-pick">
         <img class="ph-prev" ${existingId ? `src="${esc(API.photoUrl(existingId, 400))}"` : 'hidden'} alt="">
-        <label class="btn ghost sm">${icon('camera')} ${t('add_photo')}<input class="ph-in" type="file" accept="image/*" hidden></label>
+        <label class="btn ghost sm">${icon('camera')} ${label || t('add_photo')}<input class="ph-in" type="file" accept="image/*" hidden></label>
         <button type="button" class="btn ghost sm danger-text ph-rm" ${existingId ? '' : 'hidden'}>${t('remove_photo')}</button>
+        <div class="ph-note muted small" hidden></div>
       </div>`;
   }
-  function bindPhotoPicker(root) {
-    const st = { photo: null, removePhoto: false };
-    const prev = $('.ph-prev', root), inp = $('.ph-in', root), rm = $('.ph-rm', root);
+  // profile: 'photo' (dishes, reviews) or 'menu' (business lunch menu)
+  function bindPhotoPicker(root, profile = 'photo') {
+    const st = { photo: null, removePhoto: false, busy: false };
+    const prev = $('.ph-prev', root), inp = $('.ph-in', root), rm = $('.ph-rm', root), note = $('.ph-note', root);
     inp.addEventListener('change', async () => {
       const file = inp.files[0]; if (!file) return;
+      st.busy = true; note.hidden = false; note.textContent = t('optimizing');
       try {
-        st.photo = await resizeImage(file, 1280);
-        st.removePhoto = false; prev.src = st.photo; prev.hidden = false; rm.hidden = false;
-      } catch (err) { toast(t('error'), true); }
+        const r = await optimizeImage(file, profile);
+        st.photo = r.dataUrl; st.removePhoto = false;
+        prev.src = r.dataUrl; prev.hidden = false; rm.hidden = false;
+        note.textContent = t('optimized', [fmtKB(r.beforeKB), fmtKB(r.afterKB)]);
+      } catch (err) { note.hidden = true; toast(t('bad_image'), true); }
+      st.busy = false;
     });
     rm.addEventListener('click', () => {
-      st.photo = null; st.removePhoto = true; prev.hidden = true; rm.hidden = true; inp.value = '';
+      st.photo = null; st.removePhoto = true; prev.hidden = true; rm.hidden = true; note.hidden = true; inp.value = '';
     });
     return st;
+  }
+
+  // Add a photo to a dish that has none (any signed-in user)
+  function dishPhotoForm(dish) {
+    openSheet(t('add_dish_photo'), `<form class="form" id="f-dphoto">
+      <div class="label">${esc(dish.name)}</div>
+      ${photoPickerHtml('')}
+      <button class="btn primary wide" type="submit">${t('save')}</button></form>`, w => {
+      const f = $('#f-dphoto', w);
+      const ph = bindPhotoPicker(f, 'photo');
+      $('.ph-in', f).click();
+      f.addEventListener('submit', async e => {
+        e.preventDefault();
+        if (ph.busy) return;
+        if (!ph.photo) { toast(t('pick_photo'), true); return; }
+        const res = await busy($('button[type=submit]', f), () => API.call('setDishPhoto', { id: dish.id, photo: ph.photo })).catch(() => null);
+        if (!res) return;
+        upsert('dishes', res); closeSheet(); afterChange(); toast(t('saved'));
+      });
+    });
   }
 
   function reviewForm(dish) {
@@ -682,6 +737,7 @@
       f.addEventListener('submit', async e => {
         e.preventDefault();
         if (rating == null) { toast(I18N.err('bad_rating'), true); return; }
+        if (ph.busy) return;
         const btn = $('button[type=submit]', f);
         const res = await busy(btn, () => API.call('saveReview', { review: {
           dish_id: dish.id, rating, comment: new FormData(f).get('comment'), photo: ph.photo, removePhoto: ph.removePhoto } })).catch(() => null);
@@ -702,7 +758,9 @@
           <label>${t('lunch_from')} <span class="muted">(${t('optional')})</span><input name="lunch_from" type="time" value="${esc(place.lunch_from || '')}"></label>
           <label>${t('lunch_to')} <span class="muted">(${t('optional')})</span><input name="lunch_to" type="time" value="${esc(place.lunch_to || '')}"></label>
         </div>
-        <label>${t('lunch_menu')} <span class="muted">(${t('optional')})</span><textarea name="lunch_menu" rows="4" maxlength="600" placeholder="${t('lunch_menu_ph')}">${esc(place.lunch_menu || '')}</textarea></label>
+        <label>${t('lunch_menu')} <span class="muted">(${t('optional')})</span><textarea name="lunch_menu" rows="3" maxlength="600" placeholder="${t('lunch_menu_ph')}">${esc(place.lunch_menu || '')}</textarea></label>
+        <div class="label">${t('lunch_menu_photo')} <span class="muted">(${t('optional')})</span></div>
+        ${photoPickerHtml(place.lunch_photo_id, t('add_menu_photo'))}
       </div>
       <button class="btn primary wide" type="submit">${t('save')}</button></form>`, w => {
       const f = $('#f-lunch', w);
@@ -710,11 +768,15 @@
         f.querySelectorAll('#l-seg button').forEach(b => b.classList.toggle('on', b.dataset.v === state));
         $('#l-yes', f).hidden = state !== 'yes';
       };
+      const ph = bindPhotoPicker(f, 'menu');
       paint();
       $('#l-seg', f).addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (b) { state = b.dataset.v; paint(); } });
       f.addEventListener('submit', async e => {
         e.preventDefault();
         const data = Object.fromEntries(new FormData(f));
+        if (ph.busy) return;
+        if (ph.photo) data.lunch_photo = ph.photo;
+        if (ph.removePhoto) data.removeLunchPhoto = true;
         const res = await busy($('button[type=submit]', f), () => API.call('updateLunch', { id: place.id, lunch: state, ...data })).catch(() => null);
         if (!res) return;
         upsert('places', res); closeSheet(); afterChange(); toast(t('saved'));
@@ -749,6 +811,10 @@
     'dish-s': el => { S.dishCat.s = el.dataset.v; render(); },
     'top-g': el => { S.topCat = { g: el.dataset.v, s: '' }; render(); },
     'top-s': el => { S.topCat.s = el.dataset.v; render(); },
+    'add-dish-photo': async el => {
+      const id = el.dataset.id;
+      if (await requireLogin(() => IX.dish[id] && dishPhotoForm(IX.dish[id]))) dishPhotoForm(IX.dish[id]);
+    },
     'places-lunch': () => { S.placesLunch = !S.placesLunch; S.placesLimit = 60; render(); },
     'edit-lunch': async el => { const id = el.dataset.id; if (await requireLogin(() => lunchForm(IX.place[id]))) lunchForm(IX.place[id]); },
     'add-lunch-dish': async el => {

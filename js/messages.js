@@ -15,7 +15,7 @@ window.MESSAGES = {
   },
   places: { // fewer than PLACES_BELOW places
     en: ['Only {n} cafes on the map so far. Know a good spot? Add it! 📍',
-         'The map looks a bit hungry. Feed it a new сafe 🍽'],
+         'The map looks a bit hungry. Feed it a new cafe 🍽'],
     ru: ['На карте пока всего {n} мест. Знаете хорошее? Добавьте! 📍',
          'Карта немного проголодалась. Покормите её новым кафе 🍽'],
   },

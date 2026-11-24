@@ -40,6 +40,9 @@
     lunch_from: 'From', lunch_to: 'To', lunch_menu: 'Lunch menu', lunch_menu_ph: 'e.g. Soup + main + drink — 350 ₽',
     lunch_none: 'No business lunch', lunch_unknown: 'No info yet', lunch_add: 'Add info', lunch_dishes: 'Business lunch dishes',
     has_lunch: 'Business lunch',
+    lunch_menu_photo: 'Menu photo', add_menu_photo: 'Add menu photo', add_dish_photo: 'Add dish photo',
+    pick_photo: 'Choose a photo first', bad_image: 'Could not read this image', optimizing: 'Optimizing photo…',
+    optimized: ([a, b]) => `Optimized: ${a} → ${b}`,
     errors: {
       auth_required: 'Please sign in first', bad_token: 'Sign-in expired, please sign in again',
       token_expired: 'Sign-in expired, please sign in again', forbidden: 'Not allowed',
@@ -91,6 +94,9 @@
     lunch_from: 'С', lunch_to: 'До', lunch_menu: 'Меню ланча', lunch_menu_ph: 'Напр. Суп + горячее + напиток — 350 ₽',
     lunch_none: 'Бизнес-ланча нет', lunch_unknown: 'Пока нет информации', lunch_add: 'Добавить информацию', lunch_dishes: 'Блюда бизнес-ланча',
     has_lunch: 'Бизнес-ланч',
+    lunch_menu_photo: 'Фото меню', add_menu_photo: 'Добавить фото меню', add_dish_photo: 'Добавить фото блюда',
+    pick_photo: 'Сначала выберите фото', bad_image: 'Не удалось открыть изображение', optimizing: 'Сжимаем фото…',
+    optimized: ([a, b]) => `Сжато: ${a} → ${b}`,
     errors: {
       auth_required: 'Сначала войдите', bad_token: 'Сессия истекла, войдите снова',
       token_expired: 'Сессия истекла, войдите снова', forbidden: 'Нет прав',
