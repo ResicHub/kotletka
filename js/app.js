@@ -63,6 +63,55 @@
       if (u) u.name = API.user.name;
     }
     buildIndexes(); render(); refreshMarkers();
+    if (S.loaded) setTimeout(maybeMotivate, 1200);
+  }
+
+  // ---------------- Friendly messages (js/messages.js) ----------------
+  // Shown on app open, at most once every SHOW_EVERY_HOURS (remembered per device).
+  let motiveTimer = null;
+  function pickMessage() {
+    const M = window.MESSAGES; if (!M) return null;
+    const lang = I18N.lang;
+    let last = '';
+    try { last = localStorage.getItem('motive_last_text') || ''; } catch (e) {}
+    const pick = arr => {
+      const options = arr.length > 1 ? arr.filter(x => x !== last) : arr;
+      return options[Math.floor(Math.random() * options.length)];
+    };
+    const fill = (txt, n) => txt.replace('{n}', n).replace('{name}', API.user ? API.user.name : '');
+    const me = API.user && API.user.id;
+    const groups = [];
+    if (me && !S.db.reviews.some(r => r.user_id === me)) groups.push([M.mine, 0]);
+    if (S.db.places.length < M.PLACES_BELOW) groups.push([M.places, S.db.places.length]);
+    if (S.db.reviews.length < M.REVIEWS_BELOW) groups.push([M.reviews, S.db.reviews.length]);
+    if (groups.length) {
+      const [g, n] = groups[0];
+      return { text: fill(pick(g[lang] || g.en), n) };
+    }
+    const list = M.fun[lang] || M.fun.en;
+    return { text: fill(pick(list), '') };
+  }
+  function maybeMotivate() {
+    const M = window.MESSAGES; if (!M || $('.motive')) return;
+    let lastAt = 0;
+    try { lastAt = Number(localStorage.getItem('motive_last_at')) || 0; } catch (e) {}
+    if (Date.now() - lastAt < M.SHOW_EVERY_HOURS * 3600000) return;
+    const msg = pickMessage(); if (!msg) return;
+    try { localStorage.setItem('motive_last_at', String(Date.now())); localStorage.setItem('motive_last_text', msg.text); } catch (e) {}
+    showMotive(msg, M.SHOW_SECONDS);
+  }
+  // Fades in, stays for `seconds`, fades out. Not clickable: taps go through to the app underneath.
+  function showMotive(msg, seconds) {
+    const el = document.createElement('div');
+    el.className = 'motive';
+    el.setAttribute('role', 'status');
+    el.innerHTML = `<div class="motive-text">${esc(msg.text)}</div>`;
+    document.body.appendChild(el);
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('show')));
+    motiveTimer = setTimeout(() => {
+      el.classList.remove('show');
+      setTimeout(() => el.remove(), 800);
+    }, 700 + seconds * 1000);
   }
 
   function upsert(list, obj) {
@@ -784,7 +833,9 @@
     // refresh when the app comes back to the foreground
     let lastLoad = Date.now();
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && Date.now() - lastLoad > 120000) { lastLoad = Date.now(); loadData(); }
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - lastLoad > 120000) { lastLoad = Date.now(); loadData(); } // loadData also checks for a message
+      else maybeMotivate();
     });
   }
 
