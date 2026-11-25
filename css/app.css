@@ -290,3 +290,10 @@ img.avatar { object-fit: cover; padding: 0; }
 .celebrate-title { font-size: 17px; font-weight: 800; margin: 2px 0; }
 .celebrate-desc { font-size: 13.5px; color: var(--muted); line-height: 1.35; }
 .confetti { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 2550; }
+
+/* Google sign-in (redirect) button */
+.gsi-redirect { width: 100%; max-width: 320px; margin: 8px auto; display: flex; background: #fff; border: 1px solid #dadce0;
+  border-radius: 999px; color: #3c4043; font-weight: 600; padding: 11px 18px; }
+.gsi-redirect:hover { background: #f7f8f8; }
+.g-logo { width: 20px; height: 20px; flex: none; }
+.center-link { display: block; margin: 4px auto 0; }

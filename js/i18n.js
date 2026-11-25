@@ -22,6 +22,7 @@
     write_review: 'Write a review', edit_review: 'Edit my review', you: 'You', edited: 'edited',
     sign_in: 'Sign in with Google', sign_out: 'Sign out',
     sign_in_needed: 'Sign in to add places, dishes and reviews.',
+    sign_in_trouble: 'Sign-in stuck? Try another way', sign_in_failed: 'Sign-in failed, please try again',
     display_name: 'Display name', change_name: 'Change name', my_reviews: 'My reviews',
     language: 'Language', admin: 'Moderator', install_hint: 'Tip: use “Add to Home Screen” in your browser menu to install the app.',
     confirm_delete_review: 'Delete this review?', confirm_delete_dish: 'Delete this dish and all its reviews?',
@@ -60,7 +61,7 @@
       photo_too_large: 'Photo is too large', busy_try_again: 'Server is busy, try again',
       not_found: 'Not found — maybe it was deleted', network: 'No connection to the server',
       already_reviewed: 'You have already reviewed this dish', own_review: 'You can’t react to your own review',
-      banned: 'Your account is blocked', not_configured: 'The app is not configured yet',
+      sign_in_failed: 'Sign-in failed, please try again', banned: 'Your account is blocked', not_configured: 'The app is not configured yet',
     },
   };
 
@@ -86,6 +87,7 @@
     write_review: 'Написать отзыв', edit_review: 'Изменить мой отзыв', you: 'Вы', edited: 'изменён',
     sign_in: 'Войти через Google', sign_out: 'Выйти',
     sign_in_needed: 'Войдите, чтобы добавлять места, блюда и отзывы.',
+    sign_in_trouble: 'Вход завис? Попробуйте другой способ', sign_in_failed: 'Не удалось войти, попробуйте ещё раз',
     display_name: 'Отображаемое имя', change_name: 'Изменить имя', my_reviews: 'Мои отзывы',
     language: 'Язык', admin: 'Модератор', install_hint: 'Совет: в меню браузера выберите «На экран „Домой“», чтобы установить приложение.',
     confirm_delete_review: 'Удалить этот отзыв?', confirm_delete_dish: 'Удалить блюдо и все отзывы о нём?',
@@ -124,7 +126,7 @@
       photo_too_large: 'Фото слишком большое', busy_try_again: 'Сервер занят, попробуйте ещё раз',
       not_found: 'Не найдено — возможно, удалено', network: 'Нет связи с сервером',
       already_reviewed: 'Вы уже оценили это блюдо', own_review: 'Нельзя реагировать на свой отзыв',
-      banned: 'Ваш аккаунт заблокирован', not_configured: 'Приложение ещё не настроено',
+      sign_in_failed: 'Не удалось войти, попробуйте ещё раз', banned: 'Ваш аккаунт заблокирован', not_configured: 'Приложение ещё не настроено',
     },
   };
 

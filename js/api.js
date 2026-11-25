@@ -94,12 +94,55 @@
   async function ensureSignedIn() {
     if (user && tokenValid()) return true;
     if (!user || !CONFIGURED) return false;
+    if (useRedirect()) return false; // the sign-in sheet offers the redirect button
     await loadGis();
     return new Promise(resolve => {
       pendingResolve = resolve;
       google.accounts.id.prompt();
       setTimeout(() => { if (pendingResolve === resolve) { pendingResolve = null; resolve(false); } }, 8000);
     });
+  }
+
+  // ---------- Google sign-in by full-page redirect ----------
+  // Works in every mobile browser (the popup flow can get stuck on a white page in some of them).
+  // Google sends the user back to this page with #id_token=... ; the backend verifies the token as usual.
+  const isStandalone = () => { try { return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch (e) { return false; } };
+  const isMobile = () => /Android|iPhone|iPad|iPod|Mobile|Opera Mini|IEMobile/i.test(navigator.userAgent || '') || isStandalone();
+  function useRedirect() {
+    const mode = CFG.AUTH_MODE || 'auto';
+    return mode === 'redirect' || (mode === 'auto' && isMobile());
+  }
+  const redirectUri = () => location.origin + location.pathname.replace(/index\.html$/, '');
+  function signInRedirect(hintEmail) {
+    if (!CONFIGURED) return;
+    const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
+    store.set('oauth_nonce', nonce);
+    const p = new URLSearchParams({
+      client_id: CFG.GOOGLE_CLIENT_ID, redirect_uri: redirectUri(), response_type: 'id_token',
+      scope: 'openid email profile', nonce, prompt: 'select_account',
+    });
+    if (hintEmail) p.set('login_hint', hintEmail);
+    location.assign('https://accounts.google.com/o/oauth2/v2/auth?' + p.toString());
+  }
+  // Called on start: picks up the token Google put in the address (#id_token=...)
+  function takeRedirectResult() {
+    const h = location.hash || '';
+    if (!/id_token=|error=/.test(h)) return;
+    const q = new URLSearchParams(h.slice(1));
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { location.hash = ''; }
+    const expected = store.get('oauth_nonce', null); store.del('oauth_nonce');
+    if (q.get('error')) {
+      if (q.get('error') !== 'access_denied') setTimeout(() => window.dispatchEvent(new CustomEvent('api-error', { detail: 'sign_in_failed' })), 500);
+      return;
+    }
+    const idt = q.get('id_token');
+    let nonce = '';
+    try { nonce = JSON.parse(atob(idt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).nonce; } catch (e) {}
+    if (!idt || !expected || nonce !== expected) {
+      setTimeout(() => window.dispatchEvent(new CustomEvent('api-error', { detail: 'sign_in_failed' })), 500);
+      return;
+    }
+    onCredential(idt);
   }
 
   function signOut() {
@@ -112,7 +155,10 @@
   function restore() {
     const saved = store.get('auth', null);
     if (saved && saved.user) { token = saved.token; user = saved.user; }
-    if (CONFIGURED) loadGis().catch(() => {});
+    if (CONFIGURED) {
+      takeRedirectResult();
+      if (!useRedirect()) loadGis().catch(() => {});
+    }
   }
 
   function photoUrl(id, size = 800) {
@@ -123,6 +169,7 @@
 
   window.API = {
     CONFIGURED, call, onAuth, restore, signOut, renderSignInButton, ensureSignedIn, photoUrl, store,
+    useRedirect, signInRedirect,
     get user() { return user; },
     get isAdmin() { return !!user && user.role === 'admin'; },
     setUser(fields) {
