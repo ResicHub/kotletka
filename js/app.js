@@ -61,6 +61,7 @@
     try {
       const data = await API.call('getAll');
       data.reactions = data.reactions || []; data.wishlist = data.wishlist || [];
+      if (!API.user) delete data.badges_shown;
       S.db = data; S.offline = false; S.loaded = true;
       API.store.set('cache_db', data);
     } catch (e) {
@@ -77,20 +78,26 @@
   }
 
   // ---------------- New badge celebration ----------------
-  // Badges already seen are remembered per user on this device. The first check only remembers them
-  // (no fireworks for old badges); after that every newly earned badge gets a popup with confetti.
+  // Each badge is celebrated ONCE in total, on whichever device the user is on when it is reached.
+  // The list of celebrated badges is kept in the Sheet (Users.badges_shown), so other devices don't repeat it.
+  // The very first check only records the badges the user already has (no fireworks for old badges).
   const celebrateQueue = [];
   let celebrating = false;
   function checkNewBadges() {
     if (!API.user || !window.BADGES || !S.loaded) return;
-    const key = 'badges_seen_' + API.user.id;
+    if (!('badges_shown' in S.db)) return;            // no fresh signed-in data yet (or old backend): do nothing
     const st = userStats(API.user.id);
     const earned = window.BADGES.filter(b => { try { return b.test(st); } catch (e) { return false; } }).map(b => b.id);
-    let seen = null;
-    try { seen = JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) {}
-    const fresh = seen ? earned.filter(id => !seen.includes(id)) : [];
-    try { localStorage.setItem(key, JSON.stringify([...new Set([...(seen || []), ...earned])])); } catch (e) {}
-    fresh.forEach(id => celebrateQueue.push(id));
+    if (S.db.badges_shown === null) {                 // first time for this user: remember silently
+      S.db.badges_shown = earned.slice();
+      API.call('markBadges', { ids: earned }).catch(() => {});
+      return;
+    }
+    const fresh = earned.filter(id => !S.db.badges_shown.includes(id));
+    if (!fresh.length) return;
+    S.db.badges_shown.push(...fresh);
+    API.call('markBadges', { ids: fresh }).catch(() => {});
+    fresh.forEach(id => celebrateQueue.push(id));      // one popup per badge, one after another
     if (!celebrating) nextCelebration();
   }
   function nextCelebration() {
@@ -113,9 +120,10 @@
       setTimeout(() => { el.remove(); nextCelebration(); }, 700);
     }, 5500);
   }
-  // Lightweight confetti on a full-screen canvas (skipped if the device asks for reduced motion)
+  // Lightweight confetti on a full-screen canvas
   function confetti(colors) {
-    try { if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch (e) {}
+    let calm = false; // "reduce motion" on the device: fewer pieces, but still a celebration
+    try { calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
     const c = document.createElement('canvas');
     c.className = 'confetti';
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -124,7 +132,7 @@
     document.body.appendChild(c);
     const ctx = c.getContext('2d'); ctx.scale(dpr, dpr);
     const palette = [...colors, '#e4572e', '#f2b01e', '#1f9d55', '#3b82f6', '#ec4899', '#ffffff'];
-    const parts = Array.from({ length: 160 }, (_, i) => {
+    const parts = Array.from({ length: calm ? 60 : 160 }, (_, i) => {
       const left = i % 2 === 0;                       // two bursts from the top corners
       return {
         x: left ? W * 0.15 : W * 0.85, y: H * 0.12,
@@ -438,7 +446,7 @@
   API.onAuth(u => {
     if (u && $('.sheet-wrap')) closeSheet();
     if (u) toast((I18N.lang === 'ru' ? 'Привет, ' : 'Hi, ') + u.name);
-    if (!u) S.db.wishlist = [];
+    if (!u) { S.db.wishlist = []; delete S.db.badges_shown; }
     buildIndexes(); render();
     if (u) loadData(); // fetch the personal "Want to try" list
     if (u && afterLogin) { const fn = afterLogin; afterLogin = null; setTimeout(fn, 250); }
@@ -1204,7 +1212,7 @@
   function start() {
     API.restore();
     const cached = API.store.get('cache_db', null);
-    if (cached) { S.db = cached; S.loaded = true; }
+    if (cached) { delete cached.badges_shown; S.db = cached; S.loaded = true; } // badge list only from fresh server data
     buildIndexes();
     bindEvents();
     render();

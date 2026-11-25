@@ -297,3 +297,5 @@ img.avatar { object-fit: cover; padding: 0; }
 .gsi-redirect:hover { background: #f7f8f8; }
 .g-logo { width: 20px; height: 20px; flex: none; }
 .center-link { display: block; margin: 4px auto 0; }
+
+@media (min-width: 760px) { .celebrate { top: 90px; } }
