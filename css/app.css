@@ -26,7 +26,6 @@ input, select, textarea { font: inherit; }
 .icon-btn:hover { background: var(--bg); }
 .icon-btn.spin .ic { animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.lang-btn { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 5px 11px; font-weight: 600; font-size: 13px; }
 .banner { font-size: 12.5px; padding: 6px 12px; text-align: center; }
 .banner.warn { background: #fff4d6; color: #7a5a00; }
 .banner.off { background: #eceff3; color: #444; }
@@ -53,6 +52,9 @@ input, select, textarea { font: inherit; }
 }
 .tabs button.active { color: var(--accent); font-weight: 600; }
 .tabs .ic { width: 23px; height: 23px; }
+.tabs button { min-width: 0; }
+.tabs button[data-tab="places"] { flex-grow: 1.35; } /* longest label ("Establishments") */
+.tabs button span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .pad { padding: 12px 14px 0; }
 h1 { font-size: 22px; margin: 2px 0 4px; line-height: 1.2; }
@@ -162,6 +164,9 @@ h3 { font-size: 15px; margin: 18px 0 8px; color: var(--muted); font-weight: 600;
 .seg { display: flex; background: #ebe7e2; border-radius: 12px; padding: 3px; margin-bottom: 10px; }
 .seg button { flex: 1; border: 0; background: none; padding: 8px; border-radius: 9px; font-weight: 600; color: var(--muted); }
 .seg button.on { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+.lang-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 14px 0 6px; }
+.seg.mini { margin: 0; padding: 2px; border-radius: 9px; }
+.seg.mini button { flex: none; padding: 4px 12px; font-size: 12.5px; border-radius: 7px; }
 
 /* Sheets */
 .sheet-wrap { position: fixed; inset: 0; background: rgba(20,20,25,0); z-index: 2000; display: flex; align-items: flex-end; justify-content: center; transition: background .2s; }

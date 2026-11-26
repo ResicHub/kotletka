@@ -463,6 +463,11 @@
     ].join('');
     if (map) map.invalidateSize(); // the banner changes the map's height
   }
+  // Horizontal filter rows keep their scroll position across re-renders (key = view + the row's action).
+  const chipScroll = {};
+  const chipKey = el => { const b = el.querySelector('[data-act]'); return b ? cur().view + ':' + b.dataset.act : ''; };
+  function saveChipScroll(v) { v.querySelectorAll('.chips').forEach(el => { const k = chipKey(el); if (k) chipScroll[k] = el.scrollLeft; }); }
+  function restoreChipScroll(v) { v.querySelectorAll('.chips').forEach(el => { const k = chipKey(el); if (chipScroll[k]) el.scrollLeft = chipScroll[k]; }); }
   function render() {
     const c = cur();
     document.documentElement.lang = I18N.lang;
@@ -476,7 +481,6 @@
     if (c.view === 'user') title = userName(c.id);
     $('#hdr-title').textContent = title || CFG.APP_NAME;
     $('#hdr-back').hidden = S.stack.length < 2;
-    $('#hdr-lang').textContent = I18N.lang === 'ru' ? 'EN' : 'RU';
     renderBanner();
     // tabs
     const tab = S.stack[0].view;
@@ -489,7 +493,9 @@
     if (onMap) { v.innerHTML = ''; renderMapOverlay(); return; }
     if (!S.loaded && !S.db.places.length) { v.innerHTML = `<div class="empty">${t('loading')}</div>`; return; }
     const fn = { places: viewPlaces, top: viewTop, profile: viewProfile, place: viewPlace, dish: viewDish, user: viewUser }[c.view];
+    saveChipScroll(v);
     v.innerHTML = fn ? fn(c) : '';
+    restoreChipScroll(v);
     const g = $('.gbtn', v); if (g) API.renderSignInButton(g).catch(() => {});
   }
 
@@ -715,9 +721,9 @@
   }
   function viewProfile() {
     const u = API.user;
-    const langs = `<div class="card"><div class="label">${t('language')}</div><div class="seg">
-      <button class="${I18N.lang === 'en' ? 'on' : ''}" data-act="set-lang" data-v="en">English</button>
-      <button class="${I18N.lang === 'ru' ? 'on' : ''}" data-act="set-lang" data-v="ru">Русский</button></div></div>`;
+    const langs = `<div class="lang-row"><span class="muted small">${t('language')}</span><div class="seg mini">
+      <button class="${I18N.lang === 'en' ? 'on' : ''}" data-act="set-lang" data-v="en">EN</button>
+      <button class="${I18N.lang === 'ru' ? 'on' : ''}" data-act="set-lang" data-v="ru">RU</button></div></div>`;
     const foot = `<p class="muted small center">${t('install_hint')}</p>
       <p class="muted small center">Map data © OpenStreetMap contributors</p>`;
     if (!u) return `<div class="pad"><div class="card center"><p>${t('sign_in_needed')}</p>${signInBlock()}</div>${langs}${foot}</div>`;
@@ -1194,7 +1200,6 @@
     });
     $('#tabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) switchTab(b.dataset.tab); });
     $('#hdr-back').addEventListener('click', () => { try { history.back(); } catch (e) { back(); } });
-    $('#hdr-lang').addEventListener('click', () => { I18N.setLang(I18N.lang === 'ru' ? 'en' : 'ru'); render(); refreshMarkers(); });
     $('#hdr-refresh').addEventListener('click', async e => {
       const b = e.currentTarget; b.classList.add('spin'); await loadData(true); b.classList.remove('spin');
     });
