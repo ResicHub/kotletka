@@ -27,6 +27,8 @@ const SCHEMA = {
             'lunch', 'lunch_from', 'lunch_to', 'lunch_menu', 'lunch_photo_id', 'open_from', 'open_to'],
   Dishes:  ['id', 'place_id', 'name', 'description', 'category', 'price', 'photo_id', 'created_by', 'created_at'],
   Reviews: ['id', 'dish_id', 'place_id', 'user_id', 'rating', 'comment', 'photo_id', 'created_at', 'updated_at'],
+  // reviews of the establishment itself (one per user per place)
+  PlaceReviews: ['id', 'place_id', 'user_id', 'rating', 'comment', 'photo_id', 'created_at', 'updated_at'],
   // personal "Want to try" lists (each user sees only their own)
   Wishlist:  ['id', 'user_id', 'dish_id', 'created_at'],
   // reactions on reviews: kind = 'heart' (useful) or 'clown'
@@ -88,6 +90,7 @@ const ACTIONS = {
       places: readAll_('Places').map(cleanPlace_),
       dishes: readAll_('Dishes').map(cleanDish_),
       reviews: readAll_('Reviews').map(cleanReview_),
+      place_reviews: readAll_('PlaceReviews').map(cleanPlaceReview_),
       reactions: readAll_('Reactions').map(x => ({ review_id: x.review_id, user_id: x.user_id, kind: x.kind })),
       users,
       wishlist: me ? readAll_('Wishlist').filter(w => w.user_id === me.id).map(w => w.dish_id) : [],
@@ -143,7 +146,7 @@ const ACTIONS = {
     const kind = String(req.kind || '');
     if (!REACTIONS.includes(kind)) throw new ApiError('bad_reaction');
     return withLock_(() => {
-      const review = findById_('Reviews', req.review_id);
+      const review = findById_('Reviews', req.review_id) || findById_('PlaceReviews', req.review_id);
       if (!review) throw new ApiError('not_found');
       if (review.user_id === user.id) throw new ApiError('own_review');
       const mine = readAll_('Reactions').find(x => x.review_id === review.id && x.user_id === user.id);
@@ -265,6 +268,7 @@ const ACTIONS = {
       const dishIds = {};
       readAll_('Dishes').forEach(d => { if (d.place_id === id) dishIds[d.id] = true; });
       deleteReviews_(r => r.place_id === id);
+      deleteReviews_(r => r.place_id === id, 'PlaceReviews');
       deleteWhere_('Wishlist', w => dishIds[w.dish_id]);
       deleteWhere_('Dishes', d => d.place_id === id, trashPhoto_);
       deleteWhere_('Places', p => p.id === id, p => trashFile_(p.lunch_photo_id));
@@ -353,6 +357,43 @@ const ACTIONS = {
       // tried it → it leaves the "Want to try" list
       deleteWhere_('Wishlist', w => w.user_id === user.id && w.dish_id === dish.id);
       return cleanReview_(review);
+    });
+  },
+
+  // Create or update the user's review of an establishment (one per user per place).
+  savePlaceReview(req) {
+    const user = auth_(req);
+    const r = req.review || {};
+    const rating = Math.round(Number(r.rating));
+    if (!(rating >= 0 && rating <= 10)) throw new ApiError('bad_rating');
+    const comment = str_(r.comment, LIMITS.comment);
+    return withLock_(() => {
+      const place = findById_('Places', r.place_id);
+      if (!place) throw new ApiError('place_not_found');
+      let review = readAll_('PlaceReviews').find(x => x.place_id === place.id && x.user_id === user.id);
+      const isNew = !review;
+      if (isNew) {
+        review = { id: newId_(), place_id: place.id, user_id: user.id, rating, comment, photo_id: '', created_at: now_(), updated_at: now_() };
+      } else {
+        review.rating = rating;
+        review.comment = comment;
+        review.updated_at = now_();
+      }
+      if (r.removePhoto) { trashPhoto_(review); review.photo_id = ''; }
+      if (r.photo) { trashPhoto_(review); review.photo_id = savePhoto_(r.photo, 'preview_' + review.id); }
+      if (isNew) appendRow_('PlaceReviews', review); else updateRow_('PlaceReviews', review);
+      return cleanPlaceReview_(review);
+    });
+  },
+
+  deletePlaceReview(req) {
+    const user = auth_(req);
+    return withLock_(() => {
+      const review = findById_('PlaceReviews', req.id);
+      if (!review) throw new ApiError('not_found');
+      if (review.user_id !== user.id && user.role !== 'admin') throw new ApiError('forbidden');
+      deleteReviews_(r => r.id === review.id, 'PlaceReviews');
+      return { id: review.id };
     });
   },
 
@@ -481,13 +522,14 @@ function splitBadges_(v) {
   return String(v || '').split(',').map(x => x.trim()).filter(x => x && x !== '-');
 }
 
-// Deletes reviews with their photos and reactions
-function deleteReviews_(predicate) {
+// Deletes reviews (dish reviews, or establishment reviews with tab = 'PlaceReviews') with their photos and reactions
+function deleteReviews_(predicate, tab) {
+  tab = tab || 'Reviews';
   const ids = {};
-  readAll_('Reviews').forEach(r => { if (predicate(r)) ids[r.id] = true; });
+  readAll_(tab).forEach(r => { if (predicate(r)) ids[r.id] = true; });
   if (!Object.keys(ids).length) return;
   deleteWhere_('Reactions', x => ids[x.review_id]);
-  deleteWhere_('Reviews', r => ids[r.id], trashPhoto_);
+  deleteWhere_(tab, r => ids[r.id], trashPhoto_);
 }
 
 // ===== PHOTOS (Google Drive) =====
@@ -518,7 +560,15 @@ function trashFile_(id) {
 
 // ===== SHEET HELPERS =====
 function sheet_(name) {
-  const sh = SpreadsheetApp.getActive().getSheetByName(name);
+  const ss = SpreadsheetApp.getActive();
+  let sh = ss.getSheetByName(name);
+  if (!sh && SCHEMA[name] && ss.getSheetByName('Users')) {
+    // a tab added in a newer version: create it on first use, like setup() does
+    try { sh = ss.insertSheet(name); } catch (e) { return ss.getSheetByName(name); } // another request just made it
+    sh.getRange(1, 1, 1, SCHEMA[name].length).setValues([SCHEMA[name]]).setFontWeight('bold');
+    sh.setFrozenRows(1);
+    sh.getRange(1, 1, sh.getMaxRows(), SCHEMA[name].length).setNumberFormat('@');
+  }
   if (!sh) throw new ApiError('run_setup_first');
   return sh;
 }
@@ -604,6 +654,10 @@ function cleanPlace_(p) {
 function cleanDish_(d) {
   return { id: d.id, place_id: d.place_id, name: d.name, description: d.description, category: category_(d.category),
     price: d.price === '' ? null : Number(d.price), photo_id: d.photo_id, created_by: d.created_by, created_at: d.created_at };
+}
+function cleanPlaceReview_(r) {
+  return { id: r.id, place_id: r.place_id, user_id: r.user_id, rating: Number(r.rating),
+    comment: r.comment, photo_id: r.photo_id, created_at: r.created_at, updated_at: r.updated_at };
 }
 function cleanReview_(r) {
   return { id: r.id, dish_id: r.dish_id, place_id: r.place_id, user_id: r.user_id, rating: Number(r.rating),
@@ -805,6 +859,9 @@ function cleanup_(apply) {
   };
   const keptReviewIds = {};
   plan.Reviews.forEach(r => { keptReviewIds[r.id] = true; });
+  const placeReviews = readAll_('PlaceReviews');
+  plan.PlaceReviews = placeReviews.filter(r => keepPlaces[r.place_id] && admins[r.user_id]);
+  plan.PlaceReviews.forEach(r => { keptReviewIds[r.id] = true; });
   plan.Reactions = readAll_('Reactions').filter(x => keptReviewIds[x.review_id]);
   plan.Wishlist = readAll_('Wishlist').filter(w => keepDishes[w.dish_id]);
   console.log('Moderators: ' + Object.values(admins).join(', '));
@@ -819,6 +876,7 @@ function cleanup_(apply) {
     places.filter(p => !keepPlaces[p.id]).forEach(p => trashFile_(p.lunch_photo_id));
     dishes.filter(d => !keepDishes[d.id]).forEach(trashPhoto_);
     reviews.filter(r => !keepReview(r)).forEach(trashPhoto_);
+    placeReviews.filter(r => !(keepPlaces[r.place_id] && admins[r.user_id])).forEach(trashPhoto_);
     Object.keys(plan).forEach(name => rewriteSheet_(name, plan[name]));
   });
   console.log('Done. Users tab was not changed.');
@@ -849,6 +907,7 @@ function deleteUnusedPhotos() {
   const used = {};
   readAll_('Dishes').forEach(d => { if (d.photo_id) used[d.photo_id] = true; });
   readAll_('Reviews').forEach(r => { if (r.photo_id) used[r.photo_id] = true; });
+  readAll_('PlaceReviews').forEach(r => { if (r.photo_id) used[r.photo_id] = true; });
   readAll_('Places').forEach(p => { if (p.lunch_photo_id) used[p.lunch_photo_id] = true; });
   readAll_('Users').forEach(u => { if (u.avatar_id) used[u.avatar_id] = true; });
   const it = photoFolder_().getFiles();

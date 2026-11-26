@@ -8,11 +8,12 @@
 
   // ---------------- State ----------------
   const S = {
-    db: { places: [], dishes: [], reviews: [], users: [], reactions: [], wishlist: [] },
+    db: { places: [], dishes: [], reviews: [], place_reviews: [], users: [], reactions: [], wishlist: [] },
     stack: [{ view: 'map' }],
     placesQuery: '', placesType: '', placesLimit: 60,
     mapOnlyReviewed: false, topMode: 'top', topCat: { g: '', s: '' },
     dishQuery: '', dishCat: { g: '', s: '' }, placesLunch: false, placesOpen: false,
+    dishSort: 'rating', topSort: 'rating', // 'rating' | 'reviews'
     loaded: false, offline: false, loading: 0,
   };
   let IX = {};
@@ -29,6 +30,7 @@
       dishesByPlace: by(db.dishes, 'place_id'),
       reviewsByDish: by(db.reviews, 'dish_id'),
       reviewsByPlace: by(db.reviews, 'place_id'),
+      placeReviewsByPlace: by(db.place_reviews || [], 'place_id'),
     };
     const me = API.user && API.user.id;
     IX.react = {};
@@ -51,8 +53,11 @@
     IX.placeStat = {};
     db.places.forEach(p => {
       const rs = IX.reviewsByPlace[p.id] || [];
+      const prs = IX.placeReviewsByPlace[p.id] || [];
       IX.placeStat[p.id] = { count: rs.length, dishes: (IX.dishesByPlace[p.id] || []).length,
-        avg: rs.length ? rs.reduce((a, r) => a + (+r.rating), 0) / rs.length : null };
+        avg: rs.length ? rs.reduce((a, r) => a + (+r.rating), 0) / rs.length : null,
+        // the establishment's own rating (place reviews)
+        pCount: prs.length, pAvg: prs.length ? prs.reduce((a, r) => a + (+r.rating), 0) / prs.length : null };
     });
   }
 
@@ -61,7 +66,7 @@
     S.loading++; renderBanner();
     try {
       const data = await API.call('getAll');
-      data.reactions = data.reactions || []; data.wishlist = data.wishlist || [];
+      data.reactions = data.reactions || []; data.wishlist = data.wishlist || []; data.place_reviews = data.place_reviews || [];
       if (!API.user) delete data.badges_shown;
       S.db = data; S.offline = false; S.loaded = true;
       API.store.set('cache_db', data);
@@ -574,6 +579,17 @@
       .sort((a, b) => String(b.updated_at || b.created_at).localeCompare(String(a.updated_at || a.created_at)))[0];
     return r ? r.photo_id : '';
   }
+  // Dish order: 'rating' = best first (few reviews weigh less), 'reviews' = most reviewed first
+  function sortDishes(list, mode) {
+    const st = id => IX.dishStat[id];
+    return list.sort(mode === 'reviews'
+      ? (a, b) => (st(b.id).count - st(a.id).count) || (st(b.id).score - st(a.id).score) || a.name.localeCompare(b.name)
+      : (a, b) => ((st(b.id).count > 0) - (st(a.id).count > 0)) || (st(b.id).score - st(a.id).score) || a.name.localeCompare(b.name));
+  }
+  function sortChips(active, act) {
+    return `<div class="chips sort-chips"><span class="muted small">${t('sort_by')}</span>${['rating', 'reviews'].map(v =>
+      `<button class="chip ${v === active ? 'on' : ''}" data-act="${act}" data-v="${v}">${t('sort_' + v)}</button>`).join('')}</div>`;
+  }
   function dishRow(d, showPlace) {
     const st = IX.dishStat[d.id];
     const photo = dishPhoto(d);
@@ -590,10 +606,25 @@
     if (!p) return `<div class="empty">${I18N.err('not_found')}</div>`;
     const st = IX.placeStat[p.id];
     const dishes = (IX.dishesByPlace[p.id] || []).slice();
-    const top = dishes.filter(d => IX.dishStat[d.id].count).sort((a, b) => IX.dishStat[b.id].score - IX.dishStat[a.id].score).slice(0, 3);
-    const q = S.dishQuery.trim().toLowerCase();
-    const shown = dishes.filter(d => catMatch(d, S.dishCat) && (!q || d.name.toLowerCase().includes(q)))
-      .sort((a, b) => (IX.dishStat[b.id].count - IX.dishStat[a.id].count) || a.name.localeCompare(b.name));
+    const tab = c.tab || 'dishes';
+    const me = API.user && API.user.id;
+    const previews = (IX.placeReviewsByPlace[p.id] || []).slice()
+      .sort((a, b) => ((b.user_id === me) - (a.user_id === me)) || String(b.created_at).localeCompare(String(a.created_at)));
+    const myPreview = previews.find(r => r.user_id === me);
+    let body;
+    if (tab === 'reviews') {
+      body = `<button class="btn primary wide" data-act="edit-place-review" data-id="${esc(p.id)}">${icon('star')} ${myPreview ? t('edit_review') : t('review_place')}</button>
+        <div class="reviews">${previews.length ? previews.map(r => reviewCard(r)).join('') : `<div class="empty">${t('no_reviews')}</div>`}</div></div>`;
+    } else {
+      const q = S.dishQuery.trim().toLowerCase();
+      const shown = sortDishes(dishes.filter(d => catMatch(d, S.dishCat) && (!q || d.name.toLowerCase().includes(q))), S.dishSort);
+      body = `${dishes.length > 6 ? `<div class="search">${icon('search')}<input id="dish-q" type="search" placeholder="${t('search_dishes')}" value="${esc(S.dishQuery)}"></div>` : ''}
+        ${catFilter(dishes, S.dishCat, 'dish')}
+        ${dishes.length > 1 ? sortChips(S.dishSort, 'dish-sort') : ''}
+        </div>
+        <div class="list" id="dish-list">${shown.length ? shown.map(d => dishRow(d)).join('') : `<div class="empty">${t('no_dishes')}</div>`}</div>
+        <button class="fab" data-act="add-dish" data-id="${esc(p.id)}">${icon('plus')}<span>${t('add_dish')}</span></button>`;
+    }
     return `<div class="pad">
       <div class="card hero">
         <div class="hero-top"><div>
@@ -602,8 +633,9 @@
           ${p.address ? `<div class="item-sub">${icon('pin')} ${esc(p.address)}</div>` : ''}
           <div class="item-sub hours-row">${icon('clock')} ${hoursText(p) ? esc(hoursText(p)) + ' ' + openTag(p) : `<span class="muted">${t('hours_unknown')}</span>`}
             <button class="link small" data-act="edit-hours" data-id="${esc(p.id)}">${hoursText(p) ? t('edit') : t('add')}</button></div>
-        </div>${badge(st.avg, st.count)}</div>
-        <div class="item-sub small">${t('dishes_n', st.dishes)} · ${t('reviews_n', st.count)}</div>
+        </div>${badge(st.pAvg, st.pCount)}</div>
+        <div class="item-sub small">${t('place_rating')}: ${st.pCount ? t('reviews_n', st.pCount) : t('no_ratings')}
+          · ${t('dishes_avg')}: ${st.count ? `<b>${st.avg.toFixed(1)}</b> (${t('reviews_n', st.count)})` : '—'}</div>
         <div class="row-btns left">
           <button class="btn ghost sm" data-act="show-on-map" data-id="${esc(p.id)}">${icon('map')} ${t('tab_map')}</button>
           ${canEdit(p) ? `<button class="btn ghost sm" data-act="edit-place" data-id="${esc(p.id)}">${icon('edit')} ${t('edit')}</button>` : ''}
@@ -611,13 +643,11 @@
         </div>
       </div>
       ${lunchCard(p, dishes)}
-      ${top.length ? `<h3>${t('top_here')}</h3><div class="list compact">${top.map(d => dishRow(d)).join('')}</div>` : ''}
-      <h3>${t('dishes_n', dishes.length)}</h3>
-      ${dishes.length > 6 ? `<div class="search">${icon('search')}<input id="dish-q" type="search" placeholder="${t('search_dishes')}" value="${esc(S.dishQuery)}"></div>` : ''}
-      ${catFilter(dishes, S.dishCat, 'dish')}
+      <div class="seg place-tabs">
+        <button class="${tab === 'dishes' ? 'on' : ''}" data-act="place-tab" data-v="dishes">${t('tab_dishes')} · ${dishes.length}</button>
+        <button class="${tab === 'reviews' ? 'on' : ''}" data-act="place-tab" data-v="reviews">${t('tab_place_reviews')} · ${previews.length}</button>
       </div>
-      <div class="list" id="dish-list">${shown.length ? shown.map(d => dishRow(d)).join('') : `<div class="empty">${t('no_dishes')}</div>`}</div>
-      <button class="fab" data-act="add-dish" data-id="${esc(p.id)}">${icon('plus')}<span>${t('add_dish')}</span></button>`;
+      ${body}`;
   }
 
   // Business lunch block on the place page
@@ -640,9 +670,11 @@
   }
 
   // ----- Dish -----
+  // r is a dish review (has dish_id) or an establishment review (no dish_id)
   function reviewCard(r, withContext) {
     const mine = API.user && r.user_id === API.user.id;
     const name = userName(r.user_id);
+    const isPlace = !r.dish_id;
     const d = IX.dish[r.dish_id]; const p = IX.place[r.place_id];
     const canDelete = mine || API.isAdmin;
     const edited = r.updated_at && r.created_at && (new Date(r.updated_at) - new Date(r.created_at) > 60000);
@@ -657,14 +689,15 @@
         <span class="badge ${ratingClass(+r.rating)}">${+r.rating}<small>/10</small></span>
       </div>
       ${withContext && d ? `<button class="ctx" data-act="open-dish" data-id="${esc(d.id)}">${esc(d.name)} <span class="muted">${t('at_place')} ${esc(p ? p.name : '')}</span></button>` : ''}
+      ${withContext && isPlace && p ? `<button class="ctx" data-act="open-place-reviews" data-id="${esc(p.id)}">${icon('pin')} ${esc(p.name)} <span class="muted">· ${t('place_review')}</span></button>` : ''}
       ${r.comment ? `<p class="review-text">${esc(r.comment)}</p>` : ''}
       ${r.photo_id ? `<img class="review-photo" loading="lazy" src="${esc(API.photoUrl(r.photo_id, 800))}" data-act="view-photo" data-src="${esc(API.photoUrl(r.photo_id, 1600))}" alt="">` : ''}
       <div class="review-foot">
         ${reactBtn('heart', '❤️')}${reactBtn('clown', '🤡')}
         <span class="grow"></span>
         ${withContext && !mine && d ? wishBtn(d.id, true) : ''}
-        ${!withContext && mine ? `<button class="btn ghost sm" data-act="edit-review" data-id="${esc(r.dish_id)}">${icon('edit')} ${t('edit')}</button>` : ''}
-        ${!withContext && canDelete ? `<button class="btn ghost sm danger-text" data-act="delete-review" data-id="${esc(r.id)}" aria-label="${t('delete')}">${icon('trash')}</button>` : ''}
+        ${!withContext && mine ? `<button class="btn ghost sm" data-act="${isPlace ? 'edit-place-review' : 'edit-review'}" data-id="${esc(isPlace ? r.place_id : r.dish_id)}">${icon('edit')} ${t('edit')}</button>` : ''}
+        ${!withContext && canDelete ? `<button class="btn ghost sm danger-text" data-act="${isPlace ? 'delete-place-review' : 'delete-review'}" data-id="${esc(r.id)}" aria-label="${t('delete')}">${icon('trash')}</button>` : ''}
       </div>
     </div>`;
   }
@@ -699,17 +732,19 @@
   }
 
   // ----- Top -----
+  const allReviews = () => S.db.reviews.concat(S.db.place_reviews || []);
+  const byNewest = (a, b) => String(b.created_at).localeCompare(String(a.created_at));
   function viewTop() {
     const seg = `<div class="seg"><button class="${S.topMode === 'top' ? 'on' : ''}" data-act="top-mode" data-v="top">${t('top_dishes')}</button>
       <button class="${S.topMode === 'latest' ? 'on' : ''}" data-act="top-mode" data-v="latest">${t('latest_reviews')}</button></div>`;
     if (S.topMode === 'latest') {
-      const list = S.db.reviews.slice().sort((a, b) => String(b.updated_at || b.created_at).localeCompare(String(a.updated_at || a.created_at))).slice(0, 40);
+      const list = allReviews().sort((a, b) => String(b.updated_at || b.created_at).localeCompare(String(a.updated_at || a.created_at))).slice(0, 40);
       return `<div class="pad">${seg}<div class="reviews">${list.length ? list.map(r => reviewCard(r, true)).join('') : `<div class="empty">${t('nothing_here')}</div>`}</div></div>`;
     }
     const rated = S.db.dishes.filter(d => IX.dishStat[d.id].count);
-    const list = rated.filter(d => catMatch(d, S.topCat))
-      .sort((a, b) => IX.dishStat[b.id].score - IX.dishStat[a.id].score).slice(0, 50);
-    return `<div class="pad">${seg}${catFilter(rated, S.topCat, 'top')}<p class="muted small">${t('top_hint')}</p></div>
+    const list = sortDishes(rated.filter(d => catMatch(d, S.topCat)), S.topSort).slice(0, 50);
+    return `<div class="pad">${seg}${catFilter(rated, S.topCat, 'top')}${sortChips(S.topSort, 'top-sort')}
+      <p class="muted small">${t(S.topSort === 'reviews' ? 'top_hint_reviews' : 'top_hint')}</p></div>
       <div class="list ranked">${list.length ? list.map((d, i) => `<div class="rank-row"><span class="rank">${i + 1}</span>${dishRow(d, true)}</div>`).join('')
         : `<div class="empty">${t('nothing_here')}</div>`}</div>`;
   }
@@ -735,7 +770,7 @@
     const foot = `<p class="muted small center">${t('install_hint')}</p>
       <p class="muted small center">Map data © OpenStreetMap contributors</p>`;
     if (!u) return `<div class="pad"><div class="card center"><p>${t('sign_in_needed')}</p>${signInBlock()}</div>${langs}${foot}</div>`;
-    const mine = S.db.reviews.filter(r => r.user_id === u.id).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    const mine = allReviews().filter(r => r.user_id === u.id).sort(byNewest);
     const wish = [...IX.wish].map(id => IX.dish[id]).filter(Boolean);
     return `<div class="pad">
       ${profileHead(u.id, true)}
@@ -759,7 +794,7 @@
   }
   function viewUser(c) {
     if (!IX.user[c.id] && !S.db.reviews.some(r => r.user_id === c.id)) return `<div class="empty">${I18N.err('not_found')}</div>`;
-    const rs = S.db.reviews.filter(r => r.user_id === c.id).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    const rs = allReviews().filter(r => r.user_id === c.id).sort(byNewest);
     return `<div class="pad">
       ${profileHead(c.id, false)}
       <h3>${t('badges')} · ${earnedCount(c.id)}</h3>
@@ -1000,13 +1035,29 @@
   }
 
   function reviewForm(dish) {
-    const me = API.user.id;
-    const existing = (IX.reviewsByDish[dish.id] || []).find(r => r.user_id === me);
+    const existing = (IX.reviewsByDish[dish.id] || []).find(r => r.user_id === API.user.id);
+    ratingForm(existing, `${esc(dish.name)} <span class="muted">· ${esc((IX.place[dish.place_id] || {}).name || '')}</span>`,
+      (rating, comment, ph) => API.call('saveReview', { review: {
+        dish_id: dish.id, rating, comment, photo: ph.photo, removePhoto: ph.removePhoto } }),
+      res => {
+        upsert('reviews', res);
+        S.db.wishlist = (S.db.wishlist || []).filter(x => x !== res.dish_id); // tried it → off the list
+      });
+  }
+  function placeReviewForm(place) {
+    const existing = (IX.placeReviewsByPlace[place.id] || []).find(r => r.user_id === API.user.id);
+    ratingForm(existing, `${esc(place.name)} <span class="muted">· ${t('place_review_hint')}</span>`,
+      (rating, comment, ph) => API.call('savePlaceReview', { review: {
+        place_id: place.id, rating, comment, photo: ph.photo, removePhoto: ph.removePhoto } }),
+      res => upsert('place_reviews', res));
+  }
+  // 0–10 rating + comment + photo. save(rating, comment, photo) → Promise of the saved review; done(review) updates the data.
+  function ratingForm(existing, labelHtml, save, done) {
     let rating = existing ? +existing.rating : null;
     const starBtns = Array.from({ length: 10 }, (_, i) =>
       `<button type="button" class="star" data-r="${i + 1}" aria-label="${i + 1}">${icon('star')}</button>`).join('');
     openSheet(existing ? t('edit_review') : t('write_review'), `<form class="form" id="f-review">
-      <div class="label">${esc(dish.name)} <span class="muted">· ${esc((IX.place[dish.place_id] || {}).name || '')}</span></div>
+      <div class="label">${labelHtml}</div>
       <div class="label">${t('your_rating')}: <b id="r-val">${rating == null ? '—' : rating}</b>/10</div>
       <div class="stars"><button type="button" class="star zero" data-r="0">0</button>${starBtns}</div>
       <label>${t('comment')}<textarea name="comment" maxlength="500" rows="3" placeholder="${t('comment_ph')}">${esc(existing ? existing.comment : '')}</textarea></label>
@@ -1025,11 +1076,9 @@
         if (rating == null) { toast(I18N.err('bad_rating'), true); return; }
         if (ph.busy) return;
         const btn = $('button[type=submit]', f);
-        const res = await busy(btn, () => API.call('saveReview', { review: {
-          dish_id: dish.id, rating, comment: new FormData(f).get('comment'), photo: ph.photo, removePhoto: ph.removePhoto } })).catch(() => null);
+        const res = await busy(btn, () => save(rating, new FormData(f).get('comment'), ph)).catch(() => null);
         if (!res) return;
-        upsert('reviews', res);
-        S.db.wishlist = (S.db.wishlist || []).filter(x => x !== res.dish_id); // tried it → off the list
+        done(res);
         closeSheet(); afterChange(); toast(t('saved'));
       });
     });
@@ -1190,6 +1239,20 @@
       if (await requireLogin(() => dishForm(id, null, 'business_lunch'))) dishForm(id, null, 'business_lunch');
     },
     'top-mode': el => { S.topMode = el.dataset.v; render(); },
+    'top-sort': el => { S.topSort = el.dataset.v; render(); },
+    'dish-sort': el => { S.dishSort = el.dataset.v; render(); },
+    'place-tab': el => { cur().tab = el.dataset.v; render(); },
+    'open-place-reviews': el => go('place', { id: el.dataset.id, tab: 'reviews' }),
+    'edit-place-review': async el => {
+      const id = el.dataset.id;
+      if (await requireLogin(() => IX.place[id] && placeReviewForm(IX.place[id]))) placeReviewForm(IX.place[id]);
+    },
+    'delete-place-review': async el => {
+      if (!(await requireLogin())) return;
+      if (!(await confirmDialog(t('confirm_delete_review')))) return;
+      const res = await busy(null, () => API.call('deletePlaceReview', { id: el.dataset.id })).catch(() => null); if (!res) return;
+      S.db.place_reviews = S.db.place_reviews.filter(r => r.id !== res.id); afterChange(); toast(t('deleted'));
+    },
     'set-lang': el => { I18N.setLang(el.dataset.v); render(); refreshMarkers(); },
     'map-filter': () => { S.mapOnlyReviewed = !S.mapOnlyReviewed; refreshMarkers(); renderMapOverlay(); },
     'locate': () => {
@@ -1224,6 +1287,7 @@
       S.db.places = S.db.places.filter(p => p.id !== res.id);
       S.db.dishes = S.db.dishes.filter(d => d.place_id !== res.id);
       S.db.reviews = S.db.reviews.filter(r => r.place_id !== res.id);
+      S.db.place_reviews = S.db.place_reviews.filter(r => r.place_id !== res.id);
       back(); afterChange(); toast(t('deleted'));
     },
     'add-dish': async el => { const id = el.dataset.id; if (await requireLogin(() => dishForm(id))) dishForm(id); },
@@ -1283,7 +1347,7 @@
   function start() {
     API.restore();
     const cached = API.store.get('cache_db', null);
-    if (cached) { delete cached.badges_shown; S.db = cached; S.loaded = true; } // badge list only from fresh server data
+    if (cached) { delete cached.badges_shown; cached.place_reviews = cached.place_reviews || []; S.db = cached; S.loaded = true; } // badge list only from fresh server data
     buildIndexes();
     bindEvents();
     render();
