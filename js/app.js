@@ -226,6 +226,20 @@
     render(); refreshMarkers();
   }
 
+  // ---------------- Theme ----------------
+  // 'auto' (follow the phone), 'light' or 'dark'; stored on this device only
+  const darkQuery = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null;
+  function themeSetting() { try { return localStorage.getItem('theme') || 'auto'; } catch (e) { return 'auto'; } }
+  function applyTheme() {
+    const th = themeSetting();
+    const dark = th === 'dark' || (th === 'auto' && !!darkQuery && darkQuery.matches);
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    const meta = document.querySelector('meta[name=theme-color]');
+    if (meta) meta.content = dark ? '#1d1f24' : '#e4572e';
+  }
+  if (darkQuery && darkQuery.addEventListener) darkQuery.addEventListener('change', applyTheme);
+  applyTheme();
+
   // ---------------- Navigation ----------------
   const cur = () => S.stack[S.stack.length - 1];
   function go(view, params = {}) {
@@ -764,9 +778,12 @@
   }
   function viewProfile() {
     const u = API.user;
+    const th = themeSetting();
     const langs = `<div class="lang-row"><span class="muted small">${t('language')}</span><div class="seg mini">
       <button class="${I18N.lang === 'en' ? 'on' : ''}" data-act="set-lang" data-v="en">EN</button>
-      <button class="${I18N.lang === 'ru' ? 'on' : ''}" data-act="set-lang" data-v="ru">RU</button></div></div>`;
+      <button class="${I18N.lang === 'ru' ? 'on' : ''}" data-act="set-lang" data-v="ru">RU</button></div></div>
+      <div class="lang-row"><span class="muted small">${t('theme')}</span><div class="seg mini">
+      ${['auto', 'light', 'dark'].map(v => `<button class="${th === v ? 'on' : ''}" data-act="set-theme" data-v="${v}">${t('theme_' + v)}</button>`).join('')}</div></div>`;
     const foot = `<p class="muted small center">${t('install_hint')}</p>
       <p class="muted small center">Map data © OpenStreetMap contributors</p>`;
     if (!u) return `<div class="pad"><div class="card center"><p>${t('sign_in_needed')}</p>${signInBlock()}</div>${langs}${foot}</div>`;
@@ -1254,6 +1271,7 @@
       S.db.place_reviews = S.db.place_reviews.filter(r => r.id !== res.id); afterChange(); toast(t('deleted'));
     },
     'set-lang': el => { I18N.setLang(el.dataset.v); render(); refreshMarkers(); },
+    'set-theme': el => { try { localStorage.setItem('theme', el.dataset.v); } catch (e) {} applyTheme(); render(); },
     'map-filter': () => { S.mapOnlyReviewed = !S.mapOnlyReviewed; refreshMarkers(); renderMapOverlay(); },
     'locate': () => {
       try {

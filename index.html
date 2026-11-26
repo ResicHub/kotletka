@@ -13,6 +13,10 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <!-- theme before the first paint (no white flash in dark mode); app.js keeps it updated -->
+  <script>try { var th = localStorage.getItem('theme') || 'auto';
+    document.documentElement.dataset.theme = th === 'dark' || (th === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  } catch (e) {}</script>
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
   <link rel="stylesheet" href="css/app.css">
 </head>
