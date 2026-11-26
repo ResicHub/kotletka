@@ -140,18 +140,20 @@ const ACTIONS = {
     });
   },
 
-  // React to someone else's review. Same kind again = remove; other kind = switch. {review_id, kind}
+  // React to someone else's review. {review_id, set: 'heart' | 'clown' | ''} sets the exact state (safe for quick taps).
+  // Older apps send only {kind}: same kind again = remove; other kind = switch.
   react(req) {
     const user = auth_(req);
     const kind = String(req.kind || '');
-    if (!REACTIONS.includes(kind)) throw new ApiError('bad_reaction');
+    const hasSet = req.set !== undefined && req.set !== null;
+    if (hasSet ? (req.set !== '' && !REACTIONS.includes(String(req.set))) : !REACTIONS.includes(kind)) throw new ApiError('bad_reaction');
     return withLock_(() => {
       const review = findById_('Reviews', req.review_id) || findById_('PlaceReviews', req.review_id);
       if (!review) throw new ApiError('not_found');
       if (review.user_id === user.id) throw new ApiError('own_review');
       const mine = readAll_('Reactions').find(x => x.review_id === review.id && x.user_id === user.id);
       deleteWhere_('Reactions', x => x.review_id === review.id && x.user_id === user.id);
-      const now = mine && mine.kind === kind ? '' : kind;
+      const now = hasSet ? String(req.set) : (mine && mine.kind === kind ? '' : kind);
       if (now) appendRow_('Reactions', { id: newId_(), review_id: review.id, user_id: user.id, kind: now, created_at: now_() });
       return { review_id: review.id, kind: now };
     });
@@ -573,7 +575,15 @@ function sheet_(name) {
   return sh;
 }
 
+// Rows already read in this request (Apps Script starts every request fresh). Cleared on every write to that tab
+// and when a lock is taken, so code under the lock always sees the latest data.
+let MEMO_ = {};
 function readAll_(name) {
+  if (!MEMO_[name]) MEMO_[name] = readSheet_(name);
+  return MEMO_[name].map(o => Object.assign({}, o)); // copies: callers change rows before saving them
+}
+
+function readSheet_(name) {
   const sh = sheet_(name);
   const cols = SCHEMA[name];
   const last = sh.getLastRow();
@@ -617,18 +627,21 @@ function toRow_(name, obj) {
 }
 
 function appendRow_(name, obj) {
+  delete MEMO_[name];
   sheet_(name).appendRow(toRow_(name, obj));
 }
 
 function updateRow_(name, obj) {
   const row = obj._row || (findById_(name, obj.id) || {})._row;
   if (!row) throw new ApiError('not_found');
+  delete MEMO_[name];
   sheet_(name).getRange(row, 1, 1, SCHEMA[name].length).setValues([toRow_(name, obj)]);
 }
 
 function deleteWhere_(name, predicate, onDelete) {
   const sh = sheet_(name);
   const rows = readAll_(name).filter(predicate);
+  if (rows.length) delete MEMO_[name];
   rows.sort((a, b) => b._row - a._row).forEach(r => {
     if (onDelete) onDelete(r);
     sh.deleteRow(r._row);
@@ -639,6 +652,7 @@ function deleteWhere_(name, predicate, onDelete) {
 function withLock_(fn) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(20000)) throw new ApiError('busy_try_again');
+  MEMO_ = {};
   // flush() before unlocking: otherwise the next request may not see rows written here yet
   // (this is how one user got two rows in Users).
   try { return fn(); } finally { SpreadsheetApp.flush(); lock.releaseLock(); }
@@ -889,6 +903,7 @@ function cleanup_(apply) {
 
 // Replace all data rows of a tab at once (fast even for thousands of rows).
 function rewriteSheet_(name, rows) {
+  delete MEMO_[name];
   const sh = sheet_(name);
   const width = SCHEMA[name].length;
   const last = sh.getLastRow();

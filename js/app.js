@@ -397,6 +397,17 @@
     });
   }
 
+  // Instant actions: change the data on the phone right away, save in the background,
+  // and put the listed S.db arrays back if the server says no.
+  function optimistic(keys, apply, request) {
+    const before = {}; keys.forEach(k => { before[k] = S.db[k].slice(); });
+    apply(); afterChange();
+    return request().then(() => true, e => {
+      keys.forEach(k => { S.db[k] = before[k]; });
+      afterChange(); toast(I18N.err(e.code), true);
+      return false;
+    });
+  }
   async function busy(btn, fn) {
     if (btn) { btn.disabled = true; btn.classList.add('loading'); }
     try { return await fn(); }
@@ -1221,24 +1232,26 @@
       const id = el.dataset.id;
       if (!(await requireLogin())) return;
       const on = !IX.wish.has(id);
-      const res = await busy(el, () => API.call('wishToggle', { dish_id: id, on })).catch(() => null); if (!res) return;
-      S.db.wishlist = S.db.wishlist.filter(x => x !== id); if (on) S.db.wishlist.push(id);
-      afterChange(); toast(on ? t('added_wishlist') : t('removed_wishlist'));
+      toast(on ? t('added_wishlist') : t('removed_wishlist'));
+      optimistic(['wishlist'], () => { S.db.wishlist = S.db.wishlist.filter(x => x !== id); if (on) S.db.wishlist.push(id); },
+        () => API.call('wishToggle', { dish_id: id, on }));
     },
-    'wish-remove': async el => {
+    'wish-remove': el => {
       const id = el.dataset.id;
-      const res = await busy(el, () => API.call('wishToggle', { dish_id: id, on: false })).catch(() => null); if (!res) return;
-      S.db.wishlist = S.db.wishlist.filter(x => x !== id); afterChange();
+      optimistic(['wishlist'], () => { S.db.wishlist = S.db.wishlist.filter(x => x !== id); },
+        () => API.call('wishToggle', { dish_id: id, on: false }));
     },
     'review-from-list': el => { const d = IX.dish[el.dataset.id]; if (d) reviewForm(d); },
     'react': async el => {
       if (el.disabled) return;
       if (!(await requireLogin())) return;
-      const rid = el.dataset.id, kind = el.dataset.k;
-      const res = await busy(null, () => API.call('react', { review_id: rid, kind })).catch(() => null); if (!res) return;
-      S.db.reactions = S.db.reactions.filter(x => !(x.review_id === rid && x.user_id === API.user.id));
-      if (res.kind) S.db.reactions.push({ review_id: rid, user_id: API.user.id, kind: res.kind });
-      afterChange();
+      const rid = el.dataset.id, me = API.user.id;
+      // same kind again = remove, other kind = switch; the exact wanted state is sent, so quick taps can't get mixed up
+      const want = (IX.react[rid] || {}).mine === el.dataset.k ? '' : el.dataset.k;
+      optimistic(['reactions'], () => {
+        S.db.reactions = S.db.reactions.filter(x => !(x.review_id === rid && x.user_id === me));
+        if (want) S.db.reactions.push({ review_id: rid, user_id: me, kind: want });
+      }, () => API.call('react', { review_id: rid, kind: el.dataset.k, set: want }));
     },
     'open-user': el => {
       const id = el.dataset.id;
@@ -1272,8 +1285,11 @@
     'delete-place-review': async el => {
       if (!(await requireLogin())) return;
       if (!(await confirmDialog(t('confirm_delete_review')))) return;
-      const res = await busy(null, () => API.call('deletePlaceReview', { id: el.dataset.id })).catch(() => null); if (!res) return;
-      S.db.place_reviews = S.db.place_reviews.filter(r => r.id !== res.id); afterChange(); toast(t('deleted'));
+      const id = el.dataset.id;
+      if (await optimistic(['place_reviews', 'reactions'], () => {
+        S.db.place_reviews = S.db.place_reviews.filter(r => r.id !== id);
+        S.db.reactions = S.db.reactions.filter(x => x.review_id !== id);
+      }, () => API.call('deletePlaceReview', { id }))) toast(t('deleted'));
     },
     'set-lang': el => { I18N.setLang(el.dataset.v); render(); refreshMarkers(); },
     'set-theme': el => { try { localStorage.setItem('theme', el.dataset.v); } catch (e) {} applyTheme(); render(); },
@@ -1329,8 +1345,11 @@
     'delete-review': async el => {
       if (!(await requireLogin())) return;
       if (!(await confirmDialog(t('confirm_delete_review')))) return;
-      const res = await busy(null, () => API.call('deleteReview', { id: el.dataset.id })).catch(() => null); if (!res) return;
-      S.db.reviews = S.db.reviews.filter(r => r.id !== res.id); afterChange(); toast(t('deleted'));
+      const id = el.dataset.id;
+      if (await optimistic(['reviews', 'reactions'], () => {
+        S.db.reviews = S.db.reviews.filter(r => r.id !== id);
+        S.db.reactions = S.db.reactions.filter(x => x.review_id !== id);
+      }, () => API.call('deleteReview', { id }))) toast(t('deleted'));
     },
     'view-photo': el => openSheet(t('photo'), `<img class="full-photo" src="${esc(el.dataset.src)}" alt="">`),
     'edit-name': () => nameForm(),
