@@ -207,18 +207,20 @@ const ACTIONS = {
     });
   },
 
+  // The author of the place or a moderator. Location and hours are changed only when sent.
   editPlace(req) {
     const user = auth_(req);
-    requireAdmin_(user);
     const p = req.place || {};
     return withLock_(() => {
       const place = findById_('Places', p.id);
       if (!place) throw new ApiError('not_found');
+      requireOwnerOrAdmin_(user, place);
       place.name = required_(str_(p.name, LIMITS.name), 'name_required');
       place.address = str_(p.address, LIMITS.address);
       place.type = types_(p).join(',');
       if ('lunch' in p) Object.assign(place, lunch_(p));
-      if (p.lat != null && p.lng != null) { place.lat = num_(p.lat); place.lng = num_(p.lng); }
+      if ('open_from' in p || 'open_to' in p) { place.open_from = time_(p.open_from); place.open_to = time_(p.open_to); }
+      if (p.lat != null && p.lng != null) { place.lat = num_(p.lat, 'bad_location'); place.lng = num_(p.lng, 'bad_location'); }
       updateRow_('Places', place);
       return cleanPlace_(place);
     });
@@ -295,13 +297,14 @@ const ACTIONS = {
     });
   },
 
+  // The author of the dish or a moderator.
   editDish(req) {
     const user = auth_(req);
-    requireAdmin_(user);
     const d = req.dish || {};
     return withLock_(() => {
       const dish = findById_('Dishes', d.id);
       if (!dish) throw new ApiError('not_found');
+      requireOwnerOrAdmin_(user, dish);
       dish.name = required_(str_(d.name, LIMITS.name), 'name_required');
       dish.description = str_(d.description, LIMITS.description);
       dish.category = category_(d.category);
@@ -466,6 +469,10 @@ function requireAdmin_(user) {
   if (user.role !== 'admin') throw new ApiError('forbidden');
 }
 
+function requireOwnerOrAdmin_(user, row) {
+  if (user.role !== 'admin' && String(row.created_by) !== user.id) throw new ApiError('forbidden');
+}
+
 function publicUser_(u) {
   return { id: u.id, name: u.name, role: u.role, email: u.email, avatar_id: u.avatar_id || '' };
 }
@@ -526,7 +533,7 @@ function readAll_(name) {
   for (let i = 0; i < values.length; i++) {
     if (values[i][0] === '') continue;
     const o = { _row: i + 2 };
-    cols.forEach((c, j) => { o[c] = values[i][j] instanceof Date ? values[i][j].toISOString() : values[i][j]; });
+    cols.forEach((c, j) => { o[c] = cell_(values[i][j]); });
     o.id = String(o.id);
     ['place_id', 'dish_id', 'user_id', 'created_by'].forEach(k => { if (k in o) o[k] = String(o[k]); });
     out.push(o);
@@ -534,13 +541,29 @@ function readAll_(name) {
   return out;
 }
 
+// Sheets turns "10:00" typed into a non-text column into a time (a Date on 30 Dec 1899): read it back as "10:00".
+let sheetTz_ = null;
+function cell_(v) {
+  if (!(v instanceof Date)) return v;
+  if (v.getFullYear() < 1901) {
+    sheetTz_ = sheetTz_ || SpreadsheetApp.getActive().getSpreadsheetTimeZone();
+    return Utilities.formatDate(v, sheetTz_, 'HH:mm');
+  }
+  return v.toISOString();
+}
+
 function findById_(name, id) {
   id = String(id || '');
   return id ? readAll_(name).find(x => x.id === id) : null;
 }
 
+// Times like "10:00" are written with a leading apostrophe so Sheets keeps them as text.
 function toRow_(name, obj) {
-  return SCHEMA[name].map(c => (obj[c] === undefined || obj[c] === null) ? '' : obj[c]);
+  return SCHEMA[name].map(c => {
+    const v = obj[c];
+    if (v === undefined || v === null) return '';
+    return typeof v === 'string' && /^\d{1,2}:\d{2}$/.test(v) ? "'" + v : v;
+  });
 }
 
 function appendRow_(name, obj) {

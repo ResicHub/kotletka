@@ -51,6 +51,8 @@
     react_heart: 'Useful', react_clown: 'Clown', change_avatar: 'Profile photo', choose_photo: 'Choose photo',
     stat_reviews: 'reviews', stat_places: 'establishments', badges: 'Badges', badge: 'Badge', no_badges: 'No badges yet. They appear here as you earn them — some are a surprise 🤫',
     badge_earned: '✓ Earned', new_badge: '🎉 New badge!', badge_locked: 'Not yet — here’s how to get it', add: 'Add',
+    location: 'Location on the map', location_changed: 'New location chosen', change_location: 'Change location',
+    address_finding: 'Finding the address…',
     hours: 'Opening hours', hours_unknown: 'Hours unknown', open_now: 'Open now', closed_now: 'Closed',
     hours_hint: 'Leave empty if unknown. Late hours like 18:00–02:00 work too.',
     errors: {
@@ -116,6 +118,8 @@
     react_heart: 'Полезно', react_clown: 'Клоун', change_avatar: 'Фото профиля', choose_photo: 'Выбрать фото',
     stat_reviews: 'отзывов', stat_places: 'заведений', badges: 'Значки', badge: 'Значок', no_badges: 'Значков пока нет. Они появятся здесь, когда заработаешь — некоторые будут сюрпризом 🤫',
     badge_earned: '✓ Получен', new_badge: '🎉 Новый значок!', badge_locked: 'Ещё нет — вот как получить', add: 'Добавить',
+    location: 'Место на карте', location_changed: 'Выбрано новое место', change_location: 'Изменить место',
+    address_finding: 'Ищем адрес…',
     hours: 'Часы работы', hours_unknown: 'Часы работы неизвестны', open_now: 'Открыто', closed_now: 'Закрыто',
     hours_hint: 'Оставьте пустым, если неизвестно. Можно и поздние часы, например 18:00–02:00.',
     errors: {

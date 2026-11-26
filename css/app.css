@@ -164,6 +164,9 @@ h3 { font-size: 15px; margin: 18px 0 8px; color: var(--muted); font-weight: 600;
 .seg { display: flex; background: #ebe7e2; border-radius: 12px; padding: 3px; margin-bottom: 10px; }
 .seg button { flex: 1; border: 0; background: none; padding: 8px; border-radius: 9px; font-weight: 600; color: var(--muted); }
 .seg button.on { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+.loc-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; }
+.loc-row .ic { width: 18px; height: 18px; color: var(--accent); }
+.addr-note { display: block; margin-top: 4px; font-weight: 400; }
 .lang-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 14px 0 6px; }
 .seg.mini { margin: 0; padding: 2px; border-radius: 9px; }
 .seg.mini button { flex: none; padding: 4px 12px; font-size: 12.5px; border-radius: 7px; }

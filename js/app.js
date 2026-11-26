@@ -229,9 +229,15 @@
     render(); window.scrollTo(0, 0); $('#view').scrollTop = 0;
   }
   function back() {
+    // leaving the "move place" map screen (Confirm, Cancel or the Back button) returns to the edit form
+    const pm = pickMode && pickMode.place && cur().view === 'map' ? pickMode : null;
+    if (pm) pickMode = false;
     if (S.stack.length > 1) { S.stack.pop(); render(); }
+    if (pm) placeForm(pm.place, pm.result || pm.prev, pm.draft);
   }
+  const goBack = () => { try { history.back(); } catch (e) { back(); } };
   function switchTab(tab) {
+    if (pickMode && pickMode.place) pickMode = false;
     S.stack = [{ view: tab }];
     render(); $('#view').scrollTop = 0;
     if (tab === 'map') setTimeout(() => map && map.invalidateSize(), 50);
@@ -275,6 +281,8 @@
     const o = isOpenNow(p);
     return o === null ? '' : `<span class="open-tag ${o ? 'yes' : 'no'}">${o ? t('open_now') : t('closed_now')}</span>`;
   }
+  // Authors can edit their own places and dishes; moderators can edit everything.
+  const canEdit = row => !!API.user && !!row && (API.isAdmin || row.created_by === API.user.id);
   const iReviewed = dishId => !!API.user && (IX.reviewsByDish[dishId] || []).some(r => r.user_id === API.user.id);
   function wishBtn(dishId, small) {
     if (iReviewed(dishId)) return '';
@@ -598,8 +606,8 @@
         <div class="item-sub small">${t('dishes_n', st.dishes)} · ${t('reviews_n', st.count)}</div>
         <div class="row-btns left">
           <button class="btn ghost sm" data-act="show-on-map" data-id="${esc(p.id)}">${icon('map')} ${t('tab_map')}</button>
-          ${API.isAdmin ? `<button class="btn ghost sm" data-act="edit-place" data-id="${esc(p.id)}">${icon('edit')} ${t('edit')}</button>
-          <button class="btn ghost sm danger-text" data-act="delete-place" data-id="${esc(p.id)}">${icon('trash')} ${t('delete')}</button>` : ''}
+          ${canEdit(p) ? `<button class="btn ghost sm" data-act="edit-place" data-id="${esc(p.id)}">${icon('edit')} ${t('edit')}</button>` : ''}
+          ${API.isAdmin ? `<button class="btn ghost sm danger-text" data-act="delete-place" data-id="${esc(p.id)}">${icon('trash')} ${t('delete')}</button>` : ''}
         </div>
       </div>
       ${lunchCard(p, dishes)}
@@ -679,9 +687,9 @@
         </div>${badge(st.avg, st.count)}</div>
         ${d.description ? `<p class="desc">${esc(d.description)}</p>` : ''}
         <div class="item-sub small">${t('reviews_n', st.count)}</div>
-        ${API.isAdmin ? `<div class="row-btns left">
+        ${canEdit(d) ? `<div class="row-btns left">
           <button class="btn ghost sm" data-act="edit-dish" data-id="${esc(d.id)}">${icon('edit')} ${t('edit')}</button>
-          <button class="btn ghost sm danger-text" data-act="delete-dish" data-id="${esc(d.id)}">${icon('trash')} ${t('delete')}</button></div>` : ''}
+          ${API.isAdmin ? `<button class="btn ghost sm danger-text" data-act="delete-dish" data-id="${esc(d.id)}">${icon('trash')} ${t('delete')}</button>` : ''}</div>` : ''}
       </div>
       <div class="row-btns left dish-actions">${wishBtn(d.id)}
       ${!d.photo_id ? `<button class="btn ghost sm add-photo-btn" data-act="add-dish-photo" data-id="${esc(d.id)}">${icon('camera')} ${t('add_dish_photo')}</button>` : ''}</div>
@@ -762,6 +770,7 @@
   }
 
   // ---------------- Map ----------------
+  // pickMode: false, {} = choosing the point of a new place, {place, draft} = moving an existing place
   let map, markerLayer, pickMode = false;
   function initMap() {
     if (map) return;
@@ -824,36 +833,79 @@
   function selectOptions(keys, labelFn, val) {
     return keys.map(k => `<option value="${k}" ${k === val ? 'selected' : ''}>${esc(labelFn(k))}</option>`).join('');
   }
-  function placeForm(place, latlng) {
+  // New place: latlng = the picked point. Editing: latlng = new point after "Change location" (or null),
+  // draft = what was typed before going to the map.
+  function placeForm(place, latlng, draft) {
     const edit = !!place; place = place || { name: '', address: '', types: [] };
-    const chosen = new Set(edit ? placeTypes(place) : []);
+    const v = { name: place.name, address: place.address || '', open_from: place.open_from || '', open_to: place.open_to || '',
+      types: edit ? placeTypes(place) : [], ...(draft || {}) };
+    const chosen = new Set(v.types);
+    const moved = edit && latlng;
     openSheet(edit ? t('edit') : t('add_place'), `<form class="form" id="f-place">
-      <label>${t('name')}<input name="name" required maxlength="80" value="${esc(place.name)}"></label>
+      <label>${t('name')}<input name="name" required maxlength="80" value="${esc(v.name)}"></label>
       <div class="label">${t('types_pick')}</div>
       <div class="chips wrap type-pick">${I18N.TYPES.map(k => `<button type="button" class="chip ${chosen.has(k) ? 'on' : ''}" data-k="${k}">${esc(I18N.type(k))}</button>`).join('')}</div>
-      <label>${t('address')} <span class="muted">(${t('optional')})</span><input name="address" maxlength="120" value="${esc(place.address)}"></label>
-      ${edit ? '' : `<div class="label">${t('hours')} <span class="muted">(${t('optional')})</span></div>
-      <div class="row2"><label>${t('lunch_from')}<input name="open_from" type="time"></label><label>${t('lunch_to')}<input name="open_to" type="time"></label></div>`}
+      <label>${t('address')} <span class="muted">(${t('optional')})</span><input name="address" maxlength="120" value="${esc(v.address)}">
+        <span class="muted small addr-note" hidden></span></label>
+      ${edit ? `<div class="loc-row">${icon('pin')}<span class="grow small ${moved ? '' : 'muted'}">${moved ? t('location_changed') : t('location')}</span>
+        <button type="button" class="btn ghost sm" data-move>${t('change_location')}</button></div>` : ''}
+      <div class="label">${t('hours')} <span class="muted">(${t('optional')})</span></div>
+      <div class="row2"><label>${t('lunch_from')}<input name="open_from" type="time" value="${esc(v.open_from)}"></label>
+        <label>${t('lunch_to')}<input name="open_to" type="time" value="${esc(v.open_to)}"></label></div>
       <button class="btn primary wide" type="submit">${t('save')}</button></form>`, w => {
       const f = $('#f-place', w); $('input', f).focus();
+      const addr = $('[name=address]', f);
+      // Fill the address from the map point (the user can still change it)
+      if (latlng && (!edit || moved)) {
+        let typed = false;
+        addr.addEventListener('input', () => { typed = true; }, { once: true });
+        const note = $('.addr-note', f); note.hidden = false; note.textContent = t('address_finding');
+        reverseGeocode(latlng).then(a => {
+          note.hidden = true;
+          if (a && !typed && (moved || !addr.value)) addr.value = a;
+        });
+      }
       $('.type-pick', f).addEventListener('click', e => {
         const b = e.target.closest('[data-k]'); if (!b) return;
         chosen.has(b.dataset.k) ? chosen.delete(b.dataset.k) : chosen.add(b.dataset.k);
         b.classList.toggle('on', chosen.has(b.dataset.k));
       });
+      const formData = () => ({ ...Object.fromEntries(new FormData(f)), types: I18N.TYPES.filter(k => chosen.has(k)) });
+      const mv = $('[data-move]', f);
+      if (mv) mv.addEventListener('click', () => {
+        closeSheet();
+        pickMode = { place, draft: formData(), prev: latlng };
+        go('map');
+        const at = latlng || { lat: place.lat, lng: place.lng };
+        setTimeout(() => map.setView([at.lat, at.lng], 17), 80);
+      });
       f.addEventListener('submit', async e => {
         e.preventDefault();
         if (!chosen.size) { toast(t('pick_one_type'), true); return; }
-        const data = { ...Object.fromEntries(new FormData(f)), types: I18N.TYPES.filter(k => chosen.has(k)) };
+        const data = formData();
+        if (latlng) { data.lat = latlng.lat; data.lng = latlng.lng; }
         const btn = $('button[type=submit]', f);
         const res = await busy(btn, () => edit
           ? API.call('editPlace', { place: { ...data, id: place.id } })
-          : API.call('addPlace', { place: { ...data, lat: latlng.lat, lng: latlng.lng } })).catch(() => null);
+          : API.call('addPlace', { place: data })).catch(() => null);
         if (!res) return;
         upsert('places', res); closeSheet(); afterChange(); toast(t('saved'));
         if (!edit) go('place', { id: res.id });
       });
     });
+  }
+
+  // Address from coordinates (OpenStreetMap Nominatim; free, max 1 request per second — fine for this app).
+  // Returns "улица Ленина, 12" or '' when nothing is found.
+  async function reverseGeocode(ll) {
+    try {
+      const q = new URLSearchParams({ format: 'jsonv2', lat: ll.lat, lon: ll.lng, zoom: 18, addressdetails: 1, 'accept-language': 'ru' });
+      const res = await fetch('https://nominatim.openstreetmap.org/reverse?' + q);
+      if (!res.ok) return '';
+      const a = (await res.json()).address || {};
+      const street = a.road || a.pedestrian || a.footway || a.square || a.neighbourhood || a.suburb || '';
+      return [street, a.house_number].filter(Boolean).join(', ').slice(0, 120);
+    } catch (e) { return ''; }
   }
   function dishForm(placeId, dish, presetCat) {
     const edit = !!dish; dish = dish || { name: '', description: '', category: presetCat || '', price: '' };
@@ -1154,10 +1206,17 @@
     'add-place-pick': async () => {
       if (!(await requireLogin(() => ACTS['add-place-pick']()))) return;
       if (cur().view !== 'map') switchTab('map');
-      pickMode = true; renderMapOverlay();
+      pickMode = {}; renderMapOverlay();
     },
-    'pick-cancel': () => { pickMode = false; renderMapOverlay(); },
-    'pick-confirm': () => { const c = map.getCenter(); pickMode = false; renderMapOverlay(); placeForm(null, c); },
+    'pick-cancel': () => {
+      if (pickMode.place) { goBack(); return; }
+      pickMode = false; renderMapOverlay();
+    },
+    'pick-confirm': () => {
+      const c = map.getCenter();
+      if (pickMode.place) { pickMode.result = { lat: c.lat, lng: c.lng }; goBack(); return; }
+      pickMode = false; renderMapOverlay(); placeForm(null, c);
+    },
     'edit-place': el => placeForm(IX.place[el.dataset.id]),
     'delete-place': async el => {
       if (!(await confirmDialog(t('confirm_delete_place')))) return;
@@ -1199,7 +1258,7 @@
       if (fn) { e.preventDefault(); fn(el); }
     });
     $('#tabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) switchTab(b.dataset.tab); });
-    $('#hdr-back').addEventListener('click', () => { try { history.back(); } catch (e) { back(); } });
+    $('#hdr-back').addEventListener('click', goBack);
     $('#hdr-refresh').addEventListener('click', async e => {
       const b = e.currentTarget; b.classList.add('spin'); await loadData(true); b.classList.remove('spin');
     });
