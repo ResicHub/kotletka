@@ -356,6 +356,12 @@
         <span class="badge-name">${esc(badgeText(b)[0])}</span></button>`;
     }).join('')}</div>`;
   }
+  // Moderators can also see the badges nobody has reached yet (greyed out); everyone else sees only earned ones.
+  const showLockedBadges = () => { try { return API.isAdmin && localStorage.getItem('show_locked_badges') === '1'; } catch (e) { return false; } };
+  function badgesHead(uid) {
+    const toggle = API.isAdmin ? `<button class="link small" data-act="toggle-locked-badges">${showLockedBadges() ? t('hide_locked') : t('show_locked')}</button>` : '';
+    return `<h3 class="badges-head"><span>${t('badges')} · ${earnedCount(uid)}/${(window.BADGES || []).length}</span>${toggle}</h3>`;
+  }
   const earnedCount = uid => (window.BADGES || []).filter(b => { try { return b.test(userStats(uid)); } catch (e) { return false; } }).length;
   const initials = name => esc(String(name || '?').trim().charAt(0).toUpperCase());
   const icon = name => `<svg class="ic" aria-hidden="true"><use href="#i-${name}"/></svg>`;
@@ -852,8 +858,8 @@
           <button class="btn primary sm" data-act="review-from-list" data-id="${esc(d.id)}">${icon('star')} ${t('rate_it')}</button>
           <button class="icon-btn" data-act="wish-remove" data-id="${esc(d.id)}" aria-label="${t('remove')}">${icon('x')}</button></div>`;
       }).join('')}</div>` : `<div class="empty small">${t('wishlist_empty')}</div>`}
-      <h3>${t('badges')} · ${earnedCount(u.id)}/${(window.BADGES || []).length}</h3>
-      ${badgesHtml(u.id, false)}
+      ${badgesHead(u.id)}
+      ${badgesHtml(u.id, showLockedBadges())}
       ${langs}
       <h3>${t('my_reviews')}</h3>
       <div class="reviews">${mine.length ? mine.map(r => reviewCard(r, true)).join('') : `<div class="empty">${t('nothing_here')}</div>`}</div>
@@ -864,8 +870,8 @@
     const rs = allReviews().filter(r => r.user_id === c.id).sort(byNewest);
     return `<div class="pad">
       ${profileHead(c.id, false)}
-      <h3>${t('badges')} · ${earnedCount(c.id)}</h3>
-      ${badgesHtml(c.id, false)}
+      ${badgesHead(c.id)}
+      ${badgesHtml(c.id, showLockedBadges())}
       <h3>${t('reviews_n', rs.length)}</h3>
       <div class="reviews">${rs.length ? rs.map(r => reviewCard(r, true)).join('') : `<div class="empty">${t('nothing_here')}</div>`}</div>
     </div>`;
@@ -1302,6 +1308,10 @@
       if (await requireLogin(() => IX.dish[id] && dishPhotoForm(IX.dish[id]))) dishPhotoForm(IX.dish[id]);
     },
     'places-lunch': () => { S.placesLunch = !S.placesLunch; S.placesLimit = 60; render(); },
+    'toggle-locked-badges': () => {
+      try { localStorage.setItem('show_locked_badges', showLockedBadges() ? '0' : '1'); } catch (e) {}
+      render();
+    },
     'edit-promo': async el => { const id = el.dataset.id; if (await requireLogin(() => promoForm(IX.place[id]))) promoForm(IX.place[id]); },
     'edit-lunch': async el => { const id = el.dataset.id; if (await requireLogin(() => lunchForm(IX.place[id]))) lunchForm(IX.place[id]); },
     'top-mode': el => { S.topMode = el.dataset.v; render(); },
