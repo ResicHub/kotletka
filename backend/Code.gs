@@ -24,7 +24,8 @@ const SCHEMA = {
   // type = one or more place types, comma-separated ("cafe,bar")
   // lunch = 'yes' / 'no' / '' (unknown); lunch_from/lunch_to = "12:00"; lunch_menu = free text
   Places:  ['id', 'name', 'address', 'lat', 'lng', 'type', 'osm_id', 'created_by', 'created_at',
-            'lunch', 'lunch_from', 'lunch_to', 'lunch_menu', 'lunch_photo_id', 'open_from', 'open_to'],
+            'lunch', 'lunch_from', 'lunch_to', 'lunch_menu', 'lunch_photo_id', 'open_from', 'open_to',
+            'promo', 'promo_by', 'promo_at'],  // promo = current promotions (free text), who and when last set it
   Dishes:  ['id', 'place_id', 'name', 'description', 'category', 'price', 'photo_id', 'created_by', 'created_at'],
   Reviews: ['id', 'dish_id', 'place_id', 'user_id', 'rating', 'comment', 'photo_id', 'created_at', 'updated_at'],
   // reviews of the establishment itself (one per user per place)
@@ -50,7 +51,7 @@ const CATEGORIES = [
 const LEGACY_CATEGORIES = { dumplings: 'pelmeni', asian: 'other_main', street_food: 'other_fast',
   drinks: 'soft_drinks', other: 'other_main' };
 
-const LIMITS = { name: 80, address: 120, description: 300, comment: 500, displayName: 40, lunchMenu: 600, photoBytes: 900000 }; // the app sends optimized JPEGs of ~150–450 KB
+const LIMITS = { promo: 500, name: 80, address: 120, description: 300, comment: 500, displayName: 40, lunchMenu: 600, photoBytes: 900000 }; // the app sends optimized JPEGs of ~150–450 KB
 
 // ===== ENTRY POINTS =====
 function doGet() {
@@ -226,6 +227,20 @@ const ACTIONS = {
       if ('lunch' in p) Object.assign(place, lunch_(p));
       if ('open_from' in p || 'open_to' in p) { place.open_from = time_(p.open_from); place.open_to = time_(p.open_to); }
       if (p.lat != null && p.lng != null) { place.lat = num_(p.lat, 'bad_location'); place.lng = num_(p.lng, 'bad_location'); }
+      updateRow_('Places', place);
+      return cleanPlace_(place);
+    });
+  },
+
+  // Promotions — any signed-in user can keep them up to date. {id, promo} (empty = no promotions)
+  updatePromo(req) {
+    const user = auth_(req);
+    return withLock_(() => {
+      const place = findById_('Places', req.id);
+      if (!place) throw new ApiError('not_found');
+      place.promo = text_(req.promo, LIMITS.promo);
+      place.promo_by = place.promo ? user.id : '';
+      place.promo_at = place.promo ? now_() : '';
       updateRow_('Places', place);
       return cleanPlace_(place);
     });
@@ -572,8 +587,16 @@ function sheet_(name) {
     sh.getRange(1, 1, sh.getMaxRows(), SCHEMA[name].length).setNumberFormat('@');
   }
   if (!sh) throw new ApiError('run_setup_first');
+  if (SCHEMA[name] && !HEADER_OK_[name]) {
+    // columns added in a newer version: write the full header row once
+    if (sh.getLastColumn() < SCHEMA[name].length) {
+      sh.getRange(1, 1, 1, SCHEMA[name].length).setValues([SCHEMA[name]]).setFontWeight('bold');
+    }
+    HEADER_OK_[name] = true;
+  }
   return sh;
 }
+const HEADER_OK_ = {};
 
 // Rows already read in this request (Apps Script starts every request fresh). Cleared on every write to that tab
 // and when a lock is taken, so code under the lock always sees the latest data.
@@ -663,7 +686,8 @@ function cleanPlace_(p) {
   return { id: p.id, name: p.name, address: p.address, lat: Number(p.lat), lng: Number(p.lng),
     types: splitTypes_(p.type), created_by: p.created_by, created_at: p.created_at,
     lunch: p.lunch || '', lunch_from: p.lunch_from || '', lunch_to: p.lunch_to || '', lunch_menu: p.lunch_menu || '',
-    lunch_photo_id: p.lunch_photo_id || '', open_from: p.open_from || '', open_to: p.open_to || '' };
+    lunch_photo_id: p.lunch_photo_id || '', open_from: p.open_from || '', open_to: p.open_to || '',
+    promo: p.promo || '', promo_by: p.promo_by || '', promo_at: p.promo_at || '' };
 }
 function cleanDish_(d) {
   return { id: d.id, place_id: d.place_id, name: d.name, description: d.description, category: category_(d.category),

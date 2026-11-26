@@ -194,6 +194,9 @@ h3 { font-size: 15px; margin: 18px 0 8px; color: var(--muted); font-weight: 600;
 .sort-chips { align-items: center; }
 .sort-chips .muted { flex: none; margin-right: 2px; }
 .place-tabs { margin-top: 14px; }
+.promo-ico { font-size: 18px; line-height: 1; }
+.promo-card { box-shadow: inset 3px 0 0 var(--mid), 0 1px 2px var(--shadow); }
+.promo-text { white-space: pre-line; line-height: 1.45; margin: 8px 0 6px; overflow-wrap: anywhere; }
 .lang-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 14px 0 6px; }
 .lang-row + .lang-row { margin-top: 4px; }
 .seg.mini { margin: 0; padding: 2px; border-radius: 9px; }

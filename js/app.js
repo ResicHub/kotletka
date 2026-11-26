@@ -332,6 +332,14 @@
       const re = IX.react[r.id]; if (re) { s.hearts += re.heart; s.clowns += re.clown; }
     });
     s.places = places.size;
+    // establishment reviews, promotions, most dishes reviewed at one place
+    const prs = (S.db.place_reviews || []).filter(r => r.user_id === uid);
+    s.placeReviews = prs.length;
+    s.placeLow = prs.filter(r => +r.rating <= 2).length;
+    s.promos = S.db.places.filter(p => p.promo && p.promo_by === uid).length;
+    const perPlace = {}; rs.forEach(r => { perPlace[r.place_id] = (perPlace[r.place_id] || 0) + 1; });
+    s.maxAtOnePlace = Math.max(0, ...Object.values(perPlace));
+    s.fullPicture = prs.filter(r => (perPlace[r.place_id] || 0) >= 3).length;
     s.avg = rs.length ? rs.reduce((x, r) => x + (+r.rating), 0) / rs.length : 0;
     return (IX.statsCache[uid] = s);
   }
@@ -673,11 +681,40 @@
         </div>
       </div>
       ${lunchCard(p)}
+      ${promoCard(p)}
       <div class="seg place-tabs">
         <button class="${tab === 'dishes' ? 'on' : ''}" data-act="place-tab" data-v="dishes">${t('tab_dishes')} · ${dishes.length}</button>
         <button class="${tab === 'reviews' ? 'on' : ''}" data-act="place-tab" data-v="reviews">${t('tab_place_reviews')} · ${previews.length}</button>
       </div>
       ${body}`;
+  }
+
+  // Promotions block on the place page (free text, anyone can update it)
+  function promoCard(p) {
+    const btn = label => `<button class="btn ghost sm" data-act="edit-promo" data-id="${esc(p.id)}">${icon('edit')} ${label}</button>`;
+    if (!p.promo) {
+      return `<div class="card lunch-card off"><div class="lunch-head"><span class="promo-ico">🎁</span><span class="grow"><b>${t('promo')}</b> <span class="muted">· ${t('promo_none')}</span></span>${btn(t('add'))}</div></div>`;
+    }
+    return `<div class="card lunch-card promo-card">
+      <div class="lunch-head"><span class="promo-ico">🎁</span><span class="grow"><b>${t('promo')}</b></span>${btn(t('edit'))}</div>
+      <p class="promo-text">${esc(p.promo)}</p>
+      ${p.promo_at ? `<div class="item-sub small">${t('promo_updated')} ${fmtDate(p.promo_at)}${p.promo_by ? ' · ' + esc(userName(p.promo_by)) : ''}</div>` : ''}
+    </div>`;
+  }
+  function promoForm(place) {
+    openSheet(t('promo'), `<form class="form" id="f-promo">
+      <div class="label">${esc(place.name)}</div>
+      <label>${t('promo')}<textarea name="promo" rows="4" maxlength="500" placeholder="${t('promo_ph')}">${esc(place.promo || '')}</textarea></label>
+      <p class="muted small">${t('promo_hint')}</p>
+      <button class="btn primary wide" type="submit">${t('save')}</button></form>`, w => {
+      const f = $('#f-promo', w);
+      f.addEventListener('submit', async e => {
+        e.preventDefault();
+        const res = await busy($('button[type=submit]', f), () => API.call('updatePromo', { id: place.id, promo: new FormData(f).get('promo') })).catch(() => null);
+        if (!res) return;
+        upsert('places', res); closeSheet(); afterChange(); toast(t('saved'));
+      });
+    });
   }
 
   // Business lunch block on the place page
@@ -1265,6 +1302,7 @@
       if (await requireLogin(() => IX.dish[id] && dishPhotoForm(IX.dish[id]))) dishPhotoForm(IX.dish[id]);
     },
     'places-lunch': () => { S.placesLunch = !S.placesLunch; S.placesLimit = 60; render(); },
+    'edit-promo': async el => { const id = el.dataset.id; if (await requireLogin(() => promoForm(IX.place[id]))) promoForm(IX.place[id]); },
     'edit-lunch': async el => { const id = el.dataset.id; if (await requireLogin(() => lunchForm(IX.place[id]))) lunchForm(IX.place[id]); },
     'top-mode': el => { S.topMode = el.dataset.v; render(); },
     'top-sort': el => { S.topSort = el.dataset.v; render(); },

@@ -2,7 +2,9 @@
 // Edit freely. `test(s)` gets the user's stats:
 //   s.reviews, s.avg (average rating), s.photos, s.places (different places reviewed), s.cat.<category key>, s.group.<group key>,
 //   s.low (ratings 0–2), s.perfect (10/10), s.minRating, s.avg, s.night (written 23:00–04:59), s.longest (longest comment),
-//   s.firsts (dishes this user reviewed first), s.short (reviews with a comment under 15 characters), s.placesAdded, s.hearts, s.clowns (reactions received)
+//   s.firsts (dishes this user reviewed first), s.short (reviews with a comment under 15 characters), s.placesAdded, s.hearts, s.clowns (reactions received),
+//   s.placeReviews (establishment reviews), s.placeLow (establishments rated 0–2), s.promos (promotions added),
+//   s.maxAtOnePlace (most dishes reviewed at one establishment), s.fullPicture (establishments reviewed together with 3+ of their dishes)
 // `c` = the two colours of the badge tile.
 window.BADGES = [
   { id: 'first_bite', emoji: '🍴', c: ['#ffe0b2', '#ffb74d'], test: s => s.reviews >= 1,
@@ -113,4 +115,20 @@ window.BADGES = [
   { id: 'chefs_kiss', emoji: '💋', c: ['#f8bbd0', '#ad1457'], test: s => s.perfect >= 5,
     en: ['Chef’s kiss', 'Gave 10/10 five times. Mwah! Get a room, you two.'],
     ru: ['Поцелуй от шефа', 'Пять раз поставил(а) 10/10. Муа! Уединитесь уже.'] },
+  // ----- establishments pack -----
+  { id: 'inspector', emoji: '🕵️', c: ['#cfd8dc', '#37474f'], test: s => s.placeReviews >= 5,
+    en: ['Michelin inspector', 'Reviewed 5 establishments. Stars are coming. Maybe.'],
+    ru: ['Инспектор Мишлен', 'Оценил(а) 5 заведений. Звёзды уже в пути. Наверное.'] },
+  { id: 'karen', emoji: '💁', c: ['#ffe0b2', '#e65100'], test: s => s.placeLow >= 1,
+    en: ['Can I speak to the manager?', 'Rated an establishment 0–2. The complaint book is already open.'],
+    ru: ['Позовите администратора!', 'Поставил(а) заведению 0–2. Книга жалоб уже открыта.'] },
+  { id: 'regular', emoji: '🪑', c: ['#d7ccc8', '#6d4c41'], test: s => s.maxAtOnePlace >= 5,
+    en: ['The usual, please', 'Reviewed 5 dishes at one establishment. The waiters know your name.'],
+    ru: ['Мне как обычно', 'Оценил(а) 5 блюд в одном заведении. Официанты знают тебя по имени.'] },
+  { id: 'deal_hunter', emoji: '🏷️', c: ['#c8e6c9', '#2e7d32'], test: s => s.promos >= 3,
+    en: ['Freebie hunter', 'Added promotions at 3 establishments. Never pays full price.'],
+    ru: ['Охотник за халявой', 'Добавил(а) акции в 3 заведениях. Полную цену не платит никогда.'] },
+  { id: 'full_picture', emoji: '🔍', c: ['#bbdefb', '#1565c0'], test: s => s.fullPicture >= 1,
+    en: ['Full investigation', 'Reviewed an establishment and 3+ of its dishes. Case closed.'],
+    ru: ['Полное расследование', 'Оценил(а) заведение и 3+ его блюда. Дело закрыто.'] },
 ];
