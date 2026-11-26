@@ -3,7 +3,7 @@
   const en = {
     tab_map: 'Map', tab_places: 'Places', tab_top: 'Top', tab_profile: 'Profile',
     not_configured: 'Not configured: set API_URL and GOOGLE_CLIENT_ID in js/config.js',
-    loading: 'Loading…', offline_cached: 'Offline — showing saved data', refresh: 'Refresh',
+    loading: 'Loading…', loading_data: 'Loading data…', offline_cached: 'Offline — showing saved data', refresh: 'Refresh',
     search_places: 'Search places…', search_dishes: 'Search dishes…',
     all: 'All', only_reviewed: 'With reviews', show_more: 'Show more',
     no_places: 'No places found', no_dishes: 'No dishes yet — add the first one!',
@@ -68,7 +68,7 @@
   const ru = {
     tab_map: 'Карта', tab_places: 'Места', tab_top: 'Топ', tab_profile: 'Профиль',
     not_configured: 'Не настроено: укажите API_URL и GOOGLE_CLIENT_ID в js/config.js',
-    loading: 'Загрузка…', offline_cached: 'Нет сети — показаны сохранённые данные', refresh: 'Обновить',
+    loading: 'Загрузка…', loading_data: 'Загружаем данные…', offline_cached: 'Нет сети — показаны сохранённые данные', refresh: 'Обновить',
     search_places: 'Поиск мест…', search_dishes: 'Поиск блюд…',
     all: 'Все', only_reviewed: 'С отзывами', show_more: 'Показать ещё',
     no_places: 'Места не найдены', no_dishes: 'Блюд пока нет — добавьте первое!',

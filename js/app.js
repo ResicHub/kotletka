@@ -13,7 +13,7 @@
     placesQuery: '', placesType: '', placesLimit: 60,
     mapOnlyReviewed: false, topMode: 'top', topCat: { g: '', s: '' },
     dishQuery: '', dishCat: { g: '', s: '' }, placesLunch: false, placesOpen: false,
-    loaded: false, offline: false,
+    loaded: false, offline: false, loading: 0,
   };
   let IX = {};
 
@@ -58,6 +58,7 @@
 
   // ---------------- Data loading ----------------
   async function loadData(showErrors) {
+    S.loading++; renderBanner();
     try {
       const data = await API.call('getAll');
       data.reactions = data.reactions || []; data.wishlist = data.wishlist || [];
@@ -67,7 +68,7 @@
     } catch (e) {
       S.offline = e.code !== 'not_configured';
       if (showErrors) toast(I18N.err(e.code), true);
-    }
+    } finally { S.loading--; }
     // keep the signed-in user's name in sync with the users list
     if (API.user && IX) {
       const u = (S.db.users || []).find(x => x.id === API.user.id);
@@ -454,6 +455,14 @@
   });
 
   // ---------------- Views ----------------
+  function renderBanner() {
+    $('#banner').innerHTML = [
+      !API.CONFIGURED ? `<div class="banner warn">${t('not_configured')}</div>` : '',
+      S.loading ? `<div class="banner load"><span class="spinner"></span>${t('loading_data')}</div>`
+        : S.offline ? `<div class="banner off">${t('offline_cached')}</div>` : '',
+    ].join('');
+    if (map) map.invalidateSize(); // the banner changes the map's height
+  }
   function render() {
     const c = cur();
     document.documentElement.lang = I18N.lang;
@@ -468,10 +477,7 @@
     $('#hdr-title').textContent = title || CFG.APP_NAME;
     $('#hdr-back').hidden = S.stack.length < 2;
     $('#hdr-lang').textContent = I18N.lang === 'ru' ? 'EN' : 'RU';
-    $('#banner').innerHTML = [
-      !API.CONFIGURED ? `<div class="banner warn">${t('not_configured')}</div>` : '',
-      S.offline ? `<div class="banner off">${t('offline_cached')}</div>` : '',
-    ].join('');
+    renderBanner();
     // tabs
     const tab = S.stack[0].view;
     document.querySelectorAll('#tabs [data-tab]').forEach(b => {
@@ -765,6 +771,7 @@
       : L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: osmAttr });
     tiles.addTo(map);
     markerLayer = L.layerGroup().addTo(map);
+    refreshMarkers(); // saved data right away, fresh data replaces it when it arrives
     map.on('popupopen', e => {
       const b = e.popup.getElement().querySelector('[data-act]');
       if (b) b.addEventListener('click', () => { map.closePopup(); go('place', { id: b.dataset.id }); });

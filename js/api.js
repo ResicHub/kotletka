@@ -12,7 +12,9 @@
   };
 
   // ---------- Auth state ----------
-  let token = null;      // Google ID token (JWT)
+  // Google ID token (valid ~1 hour) right after sign-in, then the app session from the backend
+  // ("ks1.…", valid ~60 days, renewed while the app is used). Both carry `exp` in the middle part.
+  let token = null;
   let user = null;       // {id, name, role}
   const listeners = [];
   const onAuth = fn => listeners.push(fn);
@@ -68,11 +70,19 @@
     return gisReady;
   }
 
+  const isSession = t => typeof t === 'string' && t.startsWith('ks1.');
+  // Takes the user returned by `me`; swaps the Google token for the app session if the backend sent one.
+  function acceptMe(u) {
+    if (u.session) token = u.session;
+    delete u.session;
+    user = u;
+    store.set('auth', { token, user });
+  }
+
   async function onCredential(cred) {
     token = cred;
     try {
-      user = await call('me');
-      store.set('auth', { token, user });
+      acceptMe(await call('me'));
       emitAuth();
       if (pendingResolve) { pendingResolve(true); pendingResolve = null; }
     } catch (e) {
@@ -152,9 +162,20 @@
     emitAuth();
   }
 
+  // Renew the session in the background when it is older than a few days (or swap an old Google token for one).
+  const RENEW_BEFORE = 50 * 86400000;
+  function renewSession() {
+    if (!tokenValid()) return;
+    if (isSession(token) && tokenExp(token) - Date.now() > RENEW_BEFORE) return;
+    call('me').then(u => {
+      if (user && u.id === user.id) acceptMe(u); // quietly: no "Hi" toast, no reload
+    }).catch(() => {});
+  }
+
   function restore() {
     const saved = store.get('auth', null);
     if (saved && saved.user) { token = saved.token; user = saved.user; }
+    if (CONFIGURED && user) renewSession();
     if (CONFIGURED) {
       takeRedirectResult();
       if (!useRedirect()) loadGis().catch(() => {});

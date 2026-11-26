@@ -96,9 +96,13 @@ const ACTIONS = {
     };
   },
 
-  // Sign in: verifies the Google token, creates the user on first visit.
+  // Sign in: verifies the Google token (or an app session), creates the user on first visit.
+  // Returns a fresh app session, so the user stays signed in for SESSION_DAYS without Google's 1-hour token.
   me(req) {
-    return publicUser_(auth_(req));
+    const user = auth_(req);
+    const out = publicUser_(user);
+    out.session = issueSession_(user.id);
+    return out;
   },
 
   // {name} and/or {avatar: dataUrl} / {removeAvatar: true}
@@ -362,8 +366,19 @@ const ACTIONS = {
 };
 
 // ===== AUTH =====
+// The app signs in with a Google ID token once (valid ~1 hour), then calls `me` and gets an app session
+// token (valid SESSION_DAYS, renewed by the app while it is used). Both kinds are accepted everywhere.
+const SESSION_DAYS = 60;
+
 function auth_(req) {
   if (!req.token) throw new ApiError('auth_required');
+  if (String(req.token).indexOf(SESSION_PREFIX) === 0) {
+    const uid = verifySession_(req.token);
+    const user = readAll_('Users').find(u => u.id === uid);
+    if (!user) throw new ApiError('bad_token');
+    if (user.role === 'banned') throw new ApiError('banned');
+    return user;
+  }
   const info = verifyGoogleToken_(req.token);
   const users = readAll_('Users');
   const uid = 'g' + info.sub; // prefix keeps long numeric ids as text in Sheets
@@ -406,6 +421,45 @@ function verifyGoogleToken_(token) {
   const out = { sub: info.sub, email: info.email, name: info.name };
   cache.put(key, JSON.stringify(out), Math.min(secondsLeft, 3000));
   return out;
+}
+
+// Session token: "ks1.<payload>.<signature>", payload = base64url JSON {uid, exp (seconds)}.
+// Signed with SESSION_SECRET (a Script property created on first use; never in the code).
+// To sign everybody out: delete SESSION_SECRET in Project Settings → Script properties.
+const SESSION_PREFIX = 'ks1.';
+
+function sessionSecret_() {
+  const props = PropertiesService.getScriptProperties();
+  let secret = props.getProperty('SESSION_SECRET');
+  if (!secret) { // first use (setup() also creates it)
+    secret = Utilities.getUuid() + Utilities.getUuid();
+    props.setProperty('SESSION_SECRET', secret);
+  }
+  return secret;
+}
+
+function signSession_(payload) {
+  return Utilities.base64EncodeWebSafe(
+    Utilities.computeHmacSha256Signature(payload, sessionSecret_())).replace(/=+$/, '');
+}
+
+function issueSession_(uid) {
+  const exp = Math.floor(Date.now() / 1000) + SESSION_DAYS * 86400;
+  const payload = Utilities.base64EncodeWebSafe(JSON.stringify({ uid, exp })).replace(/=+$/, '');
+  return SESSION_PREFIX + payload + '.' + signSession_(payload);
+}
+
+function verifySession_(token) {
+  const parts = String(token).slice(SESSION_PREFIX.length).split('.');
+  if (parts.length !== 2 || signSession_(parts[0]) !== parts[1]) throw new ApiError('bad_token');
+  let data;
+  try {
+    let b64 = parts[0];
+    while (b64.length % 4) b64 += '=';
+    data = JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(b64)).getDataAsString());
+  } catch (e) { throw new ApiError('bad_token'); }
+  if (!data.uid || !(Number(data.exp) * 1000 > Date.now())) throw new ApiError('token_expired');
+  return String(data.uid);
 }
 
 function requireAdmin_(user) {
@@ -512,7 +566,9 @@ function deleteWhere_(name, predicate, onDelete) {
 function withLock_(fn) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(20000)) throw new ApiError('busy_try_again');
-  try { return fn(); } finally { lock.releaseLock(); }
+  // flush() before unlocking: otherwise the next request may not see rows written here yet
+  // (this is how one user got two rows in Users).
+  try { return fn(); } finally { SpreadsheetApp.flush(); lock.releaseLock(); }
 }
 
 // ===== CLEANERS (what the app is allowed to see — no emails) =====
@@ -602,6 +658,7 @@ function setup() {
   dishes.forEach(d => { d.category = category_(d.category); updateRow_('Dishes', d); });
   if (dishes.length) console.log('Updated categories of ' + dishes.length + ' dishes.');
 
+  sessionSecret_();
   const me = Session.getEffectiveUser().getEmail();
   props.setProperty('ADMIN_EMAIL', me);
   console.log('Setup done. Admin: ' + me);
@@ -671,6 +728,29 @@ function importPlacesFromOSM() {
     sh.getRange(sh.getLastRow() + 1, 1, rows.length, SCHEMA.Places.length).setValues(rows);
   }
   console.log('Imported ' + rows.length + ' places (' + elements.length + ' found in OSM).');
+}
+
+// ===== DUPLICATE USERS CLEANUP (run once from the editor) =====
+// Older versions could create two rows for one user when the app sent two requests at once.
+// Keeps the first row of each id, fills its empty cells from the copies, deletes the copies.
+function dedupeUsers() {
+  withLock_(() => {
+    const users = readAll_('Users');
+    const first = {};
+    const extra = [];
+    users.forEach(u => {
+      const keep = first[u.id];
+      if (!keep) { first[u.id] = u; return; }
+      SCHEMA.Users.forEach(c => {
+        if ((keep[c] === '' || keep[c] == null) && u[c] !== '' && u[c] != null) { keep[c] = u[c]; keep._changed = true; }
+      });
+      extra.push(u);
+    });
+    Object.keys(first).forEach(id => { if (first[id]._changed) updateRow_('Users', first[id]); });
+    const sh = sheet_('Users');
+    extra.sort((a, b) => b._row - a._row).forEach(u => sh.deleteRow(u._row));
+    console.log('Removed ' + extra.length + ' duplicate user rows.');
+  });
 }
 
 // ===== ONE-TIME CLEANUP =====
