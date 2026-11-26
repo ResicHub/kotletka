@@ -1,6 +1,5 @@
-# Local secrets and generated deploy files (see scripts/prepare-deploy.sh)
-secrets.env
-deploy/
+# Private developer docs (setup, deploy, moderation) — kept local only
+docs-private/
 
 # tools/import_places.py output
 tools/places.csv
