@@ -1,0 +1,9 @@
+# Local secrets and generated deploy files (see scripts/prepare-deploy.sh)
+secrets.env
+deploy/
+
+# tools/import_places.py output
+tools/places.csv
+
+__pycache__/
+.DS_Store

@@ -31,12 +31,12 @@
     at_place: 'at', by: 'by', map_attr: 'Map',
     types: { cafe: 'Cafe', restaurant: 'Restaurant', fast_food: 'Fast food', bar: 'Bar / pub', coffee: 'Coffee shop',
       bakery: 'Bakery', canteen: 'Canteen', other: 'Other' },
-    cats: { soups: 'Soups', salads: 'Salads', meat: 'Meat', fish: 'Fish', starters: 'Starters', pelmeni: 'Pelmeni',
+    cats: { soups: 'Soups', salads: 'Salads', meat: 'Meat', fish: 'Fish', starters: 'Snacks', pelmeni: 'Pelmeni',
       pasta: 'Pasta', other_main: 'Other main', pizza: 'Pizza', burgers: 'Burgers', sushi: 'Sushi', shawarma: 'Shaurma',
       other_fast: 'Other fast food', breakfast: 'Breakfast', business_lunch: 'Business lunch', bakery: 'Bakery',
       desserts: 'Desserts', coffee: 'Coffee', tea: 'Tea', soft_drinks: 'Non-alcoholic', alcohol: 'Alcohol' },
     groups: { main: 'Main', fast_food: 'Fast food', breakfast: 'Breakfast', business_lunch: 'Business lunch',
-      bakery: 'Bakery', desserts: 'Desserts', drinks: 'Drinks' },
+      bakery: 'Bakery', desserts: 'Desserts', starters: 'Snacks', drinks: 'Drinks' },
     subcategory: 'Subcategory', types_pick: 'Type (choose one or more)', pick_one_type: 'Choose at least one type',
     lunch: 'Business lunch', lunch_q: 'Is there a business lunch?', yes: 'Yes', no: 'No', unknown: 'Unknown',
     lunch_from: 'From', lunch_to: 'To', lunch_menu: 'Lunch menu', lunch_menu_ph: 'e.g. Soup + main + drink — 350 ₽',
@@ -101,7 +101,7 @@
       other_fast: 'Другой фастфуд', breakfast: 'Завтраки', business_lunch: 'Бизнес-ланч', bakery: 'Выпечка',
       desserts: 'Десерты', coffee: 'Кофе', tea: 'Чай', soft_drinks: 'Безалкогольные', alcohol: 'Алкоголь' },
     groups: { main: 'Основные блюда', fast_food: 'Фастфуд', breakfast: 'Завтраки', business_lunch: 'Бизнес-ланч',
-      bakery: 'Выпечка', desserts: 'Десерты', drinks: 'Напитки' },
+      bakery: 'Выпечка', desserts: 'Десерты', starters: 'Закуски', drinks: 'Напитки' },
     subcategory: 'Подкатегория', types_pick: 'Тип (можно несколько)', pick_one_type: 'Выберите хотя бы один тип',
     lunch: 'Бизнес-ланч', lunch_q: 'Есть бизнес-ланч?', yes: 'Да', no: 'Нет', unknown: 'Неизвестно',
     lunch_from: 'С', lunch_to: 'До', lunch_menu: 'Меню ланча', lunch_menu_ph: 'Напр. Суп + горячее + напиток — 350 ₽',
@@ -140,12 +140,13 @@
   // Two-step dish categories: group → subcategories. A group with [] is a category by itself.
   // Keep in sync with CATEGORIES in backend/Code.gs.
   const CAT_TREE = {
-    main: ['soups', 'salads', 'meat', 'fish', 'starters', 'pelmeni', 'pasta', 'other_main'],
+    main: ['soups', 'salads', 'meat', 'fish', 'pelmeni', 'pasta', 'other_main'],
     fast_food: ['pizza', 'burgers', 'sushi', 'shawarma', 'other_fast'],
     breakfast: [],
     business_lunch: [],
     bakery: [],
     desserts: [],
+    starters: [], // shown as "Snacks" / "Закуски"; key kept so existing dishes and the backend stay valid
     drinks: ['coffee', 'tea', 'soft_drinks', 'alcohol'],
   };
   const GROUP_OF = {};
