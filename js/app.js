@@ -672,7 +672,7 @@
           ${API.isAdmin ? `<button class="btn ghost sm danger-text" data-act="delete-place" data-id="${esc(p.id)}">${icon('trash')} ${t('delete')}</button>` : ''}
         </div>
       </div>
-      ${lunchCard(p, dishes)}
+      ${lunchCard(p)}
       <div class="seg place-tabs">
         <button class="${tab === 'dishes' ? 'on' : ''}" data-act="place-tab" data-v="dishes">${t('tab_dishes')} · ${dishes.length}</button>
         <button class="${tab === 'reviews' ? 'on' : ''}" data-act="place-tab" data-v="reviews">${t('tab_place_reviews')} · ${previews.length}</button>
@@ -681,8 +681,7 @@
   }
 
   // Business lunch block on the place page
-  function lunchCard(p, dishes) {
-    const lunchDishes = dishes.filter(d => I18N.normCat(d.category) === 'business_lunch');
+  function lunchCard(p) {
     const editBtn = label => `<button class="btn ghost sm" data-act="edit-lunch" data-id="${esc(p.id)}">${icon('edit')} ${label}</button>`;
     if (p.lunch === 'no') {
       return `<div class="card lunch-card off"><div class="lunch-head">${icon('lunch')}<span class="grow muted">${t('lunch_none')}</span>${editBtn(t('edit'))}</div></div>`;
@@ -694,8 +693,6 @@
       <div class="lunch-head">${icon('lunch')}<span class="grow"><b>${t('lunch')}</b>${lunchTime(p) ? ` <span class="lunch-time">${esc(lunchTime(p))}</span>` : ''}</span>${editBtn(t('edit'))}</div>
       ${p.lunch_menu ? `<p class="lunch-menu">${esc(p.lunch_menu)}</p>` : ''}
       ${p.lunch_photo_id ? `<img class="lunch-photo" loading="lazy" src="${esc(API.photoUrl(p.lunch_photo_id, 800))}" data-act="view-photo" data-src="${esc(API.photoUrl(p.lunch_photo_id, 2000))}" alt="${t('lunch_menu_photo')}">` : ''}
-      ${lunchDishes.length ? `<div class="label small muted">${t('lunch_dishes')}</div><div class="list compact inset">${lunchDishes.map(d => dishRow(d)).join('')}</div>` : ''}
-      <button class="btn ghost sm" data-act="add-lunch-dish" data-id="${esc(p.id)}">${icon('plus')} ${t('add_dish')}</button>
     </div>`;
   }
 
@@ -1269,10 +1266,6 @@
     },
     'places-lunch': () => { S.placesLunch = !S.placesLunch; S.placesLimit = 60; render(); },
     'edit-lunch': async el => { const id = el.dataset.id; if (await requireLogin(() => lunchForm(IX.place[id]))) lunchForm(IX.place[id]); },
-    'add-lunch-dish': async el => {
-      const id = el.dataset.id;
-      if (await requireLogin(() => dishForm(id, null, 'business_lunch'))) dishForm(id, null, 'business_lunch');
-    },
     'top-mode': el => { S.topMode = el.dataset.v; render(); },
     'top-sort': el => { S.topSort = el.dataset.v; render(); },
     'dish-sort': el => { S.dishSort = el.dataset.v; render(); },
