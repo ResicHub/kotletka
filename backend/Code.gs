@@ -337,7 +337,7 @@ const ACTIONS = {
     const r = req.review || {};
     const rating = Math.round(Number(r.rating));
     if (!(rating >= 0 && rating <= 10)) throw new ApiError('bad_rating');
-    const comment = str_(r.comment, LIMITS.comment);
+    const comment = text_(r.comment, LIMITS.comment);
     return withLock_(() => {
       const dish = findById_('Dishes', r.dish_id);
       if (!dish) throw new ApiError('dish_not_found');
@@ -366,7 +366,7 @@ const ACTIONS = {
     const r = req.review || {};
     const rating = Math.round(Number(r.rating));
     if (!(rating >= 0 && rating <= 10)) throw new ApiError('bad_rating');
-    const comment = str_(r.comment, LIMITS.comment);
+    const comment = text_(r.comment, LIMITS.comment);
     return withLock_(() => {
       const place = findById_('Places', r.place_id);
       if (!place) throw new ApiError('place_not_found');
@@ -672,6 +672,11 @@ function json_(obj) {
 function newId_() { return 'i' + Utilities.getUuid().replace(/-/g, '').slice(0, 11); }
 function now_() { return new Date().toISOString(); }
 function str_(v, max) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max); }
+// Multi-line text: keeps line breaks, but several in a row (empty lines) become one.
+function text_(v, max) {
+  return String(v == null ? '' : v).replace(/\r/g, '').split('\n').map(l => l.replace(/[ \t]+/g, ' ').trim())
+    .filter(Boolean).join('\n').slice(0, max);
+}
 function required_(v, err) { if (!v) throw new ApiError(err); return v; }
 function num_(v, err) { const n = Number(v); if (!isFinite(n)) throw new ApiError(err || 'bad_number'); return n; }
 function price_(v) {

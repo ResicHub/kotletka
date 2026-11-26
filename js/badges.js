@@ -37,7 +37,7 @@ window.BADGES = [
     ru: ['Душнила', '5+ отзывов со средней оценкой ниже 5. Ничего не нравится, всё не так.'] },
   { id: 'pelmeni', emoji: '🐼', c: ['#fff9c4', '#fbc02d'], test: s => (s.cat.pelmeni || 0) >= 3,
     en: ['Dragon Warrior', '3 pelmeni reviews. The secret ingredient is… there is no secret ingredient.'],
-    ru: ['Воин Дракона', '3 отзыва о пельменях. Секретный ингредиент… нет никакого секретного ингредиента.'] },
+    ru: ['Воин Дракона', '3 отзыва о пельменях. Секретного ингридиента нет... дело в тебе)'] },
   { id: 'shawarma', emoji: '🐈', c: ['#ffe0b2', '#f57c00'], test: s => (s.cat.shawarma || 0) >= 3,
     en: ['So, how does the kitty taste?', '3 shaurma reviews. We don’t ask what’s inside. We just eat.'],
     ru: ['Ну и какая на вкус кошечка?', '3 отзыва о шаурме. Мы не спрашиваем, что внутри. Мы просто едим.'] },

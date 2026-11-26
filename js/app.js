@@ -272,6 +272,7 @@
     if (!count) return `<span class="badge r-none">—</span>`;
     return `<span class="badge ${ratingClass(avg)}">${avg.toFixed(1)}</span>`;
   }
+  const priceHtml = p => fmtPrice(p) ? ` <span class="price">${fmtPrice(p)}</span>` : '';
   const fmtPrice = p => (p === null || p === '' || p === undefined || isNaN(p)) ? '' : `${Math.round(p)} ${CFG.CURRENCY}`;
   function fmtDate(iso) {
     const d = new Date(iso); if (isNaN(d)) return '';
@@ -372,7 +373,11 @@
     wrap.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">
       <div class="sheet-head"><h2>${esc(title)}</h2><button class="icon-btn" data-act="close-sheet" aria-label="${t('close')}">${icon('x')}</button></div>
       <div class="sheet-body">${bodyHtml}</div></div>`;
-    wrap.addEventListener('click', e => { if (e.target === wrap) closeSheet(); });
+    // Forms close only with ✕ (a stray tap or a text-selection drag must not lose what was typed).
+    // Other sheets (photo, badge info) also close on a tap on the backdrop — pressed AND released there.
+    let downOnBackdrop = false;
+    wrap.addEventListener('pointerdown', e => { downOnBackdrop = e.target === wrap; });
+    wrap.addEventListener('click', e => { if (e.target === wrap && downOnBackdrop && !wrap.querySelector('form')) closeSheet(); });
     document.body.appendChild(wrap);
     requestAnimationFrame(() => wrap.classList.add('open'));
     if (onMount) onMount(wrap);
@@ -611,7 +616,7 @@
     return `<button class="item" data-act="open-dish" data-id="${esc(d.id)}">
       ${photo ? `<img class="thumb" loading="lazy" src="${esc(API.photoUrl(photo, 200))}" alt="">` : `<div class="thumb ph">${icon('camera')}</div>`}
       <div class="item-main"><div class="item-title">${esc(d.name)}</div>
-      <div class="item-sub">${showPlace && place ? esc(place.name) + ' · ' : ''}${esc(I18N.cat(d.category))}${fmtPrice(d.price) ? ' · ' + fmtPrice(d.price) : ''}</div>
+      <div class="item-sub">${showPlace && place ? esc(place.name) + ' · ' : ''}${esc(I18N.cat(d.category))}${priceHtml(d.price)}</div>
       <div class="item-sub small">${t('reviews_n', st.count)}</div></div>
       ${badge(st.avg, st.count)}</button>`;
   }
@@ -728,7 +733,7 @@
       <div class="card hero">
         ${dishPhoto(d) ? `<img class="hero-photo" src="${esc(API.photoUrl(dishPhoto(d), 1000))}" data-act="view-photo" data-src="${esc(API.photoUrl(dishPhoto(d), 1600))}" alt="">` : ''}
         <div class="hero-top"><div>
-          <div class="item-sub">${esc(I18N.catFull(d.category))}${fmtPrice(d.price) ? ' · ' + fmtPrice(d.price) : ''}</div>
+          <div class="item-sub">${esc(I18N.catFull(d.category))}${priceHtml(d.price)}</div>
           <h1>${esc(d.name)}</h1>
           <button class="link" data-act="open-place" data-id="${esc(p.id)}">${icon('pin')} ${esc(p.name || '')}</button>
         </div>${badge(st.avg, st.count)}</div>
@@ -797,7 +802,7 @@
       ${wish.length ? `<div class="list compact">${wish.map(d => {
         const p = IX.place[d.place_id] || {}; const st = IX.dishStat[d.id];
         return `<div class="item wish-item"><button class="item-main link-like" data-act="open-dish" data-id="${esc(d.id)}">
-            <div class="item-title">${esc(d.name)}</div><div class="item-sub">${esc(p.name || '')}${fmtPrice(d.price) ? ' · ' + fmtPrice(d.price) : ''}</div></button>
+            <div class="item-title">${esc(d.name)}</div><div class="item-sub">${esc(p.name || '')}${priceHtml(d.price)}</div></button>
           ${badge(st.avg, st.count)}
           <button class="btn primary sm" data-act="review-from-list" data-id="${esc(d.id)}">${icon('star')} ${t('rate_it')}</button>
           <button class="icon-btn" data-act="wish-remove" data-id="${esc(d.id)}" aria-label="${t('remove')}">${icon('x')}</button></div>`;
