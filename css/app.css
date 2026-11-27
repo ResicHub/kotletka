@@ -32,6 +32,8 @@
 [data-theme="dark"] .leaflet-control-attribution a { color: var(--accent-dark); }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
+/* the strip under the tab bar (Android nav buttons / iPhone home bar) shows the html background: match the tab bar */
+html { background: var(--card); }
 body { overflow: hidden; }
 button { font: inherit; color: inherit; cursor: pointer; }
 input, select, textarea { font: inherit; }
@@ -46,6 +48,7 @@ input, select, textarea { font: inherit; }
 .hdr-title { flex: 1; font-weight: 700; font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 4px; }
 .icon-btn { border: 0; background: transparent; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; }
 .icon-btn:hover { background: var(--bg); }
+#hdr-refresh { border: 1.5px solid var(--line); width: 36px; height: 36px; } /* outlined so it reads as a button */
 .icon-btn.spin .ic { animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .banner { font-size: 12.5px; padding: 6px 12px; text-align: center; }

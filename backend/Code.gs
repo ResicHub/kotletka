@@ -51,7 +51,7 @@ const CATEGORIES = [
 const LEGACY_CATEGORIES = { dumplings: 'pelmeni', asian: 'other_main', street_food: 'other_fast',
   drinks: 'soft_drinks', other: 'other_main' };
 
-const LIMITS = { promo: 500, name: 80, address: 120, description: 300, comment: 500, displayName: 40, lunchMenu: 600, photoBytes: 900000 }; // the app sends optimized JPEGs of ~150–450 KB
+const LIMITS = { promo: 500, name: 80, placeName: 30, address: 30, description: 300, comment: 500, displayName: 40, lunchMenu: 600, photoBytes: 900000 }; // the app sends optimized JPEGs of ~150–450 KB
 
 // ===== ENTRY POINTS =====
 function doGet() {
@@ -141,19 +141,27 @@ const ACTIONS = {
     });
   },
 
-  // React to someone else's review. {review_id, set: 'heart' | 'clown' | ''} sets the exact state (safe for quick taps).
-  // Older apps send only {kind}: same kind again = remove; other kind = switch.
+  // React to someone else's review. ❤️ and 🤡 are independent: one person can put both on the same review.
+  // {review_id, kind, on: true | false} sets the exact state of that kind (safe for quick taps).
+  // Older apps send {set: 'heart' | 'clown' | ''} (one reaction per person) or only {kind} (toggle/switch).
   react(req) {
     const user = auth_(req);
     const kind = String(req.kind || '');
-    const hasSet = req.set !== undefined && req.set !== null;
+    const hasOn = typeof req.on === 'boolean';
+    const hasSet = !hasOn && req.set !== undefined && req.set !== null;
     if (hasSet ? (req.set !== '' && !REACTIONS.includes(String(req.set))) : !REACTIONS.includes(kind)) throw new ApiError('bad_reaction');
     return withLock_(() => {
       const review = findById_('Reviews', req.review_id) || findById_('PlaceReviews', req.review_id);
       if (!review) throw new ApiError('not_found');
       if (review.user_id === user.id) throw new ApiError('own_review');
-      const mine = readAll_('Reactions').find(x => x.review_id === review.id && x.user_id === user.id);
-      deleteWhere_('Reactions', x => x.review_id === review.id && x.user_id === user.id);
+      const isMine = x => x.review_id === review.id && x.user_id === user.id;
+      if (hasOn) {
+        deleteWhere_('Reactions', x => isMine(x) && x.kind === kind);
+        if (req.on) appendRow_('Reactions', { id: newId_(), review_id: review.id, user_id: user.id, kind, created_at: now_() });
+        return { review_id: review.id, kind, on: req.on };
+      }
+      const mine = readAll_('Reactions').find(isMine);
+      deleteWhere_('Reactions', isMine);
       const now = hasSet ? String(req.set) : (mine && mine.kind === kind ? '' : kind);
       if (now) appendRow_('Reactions', { id: newId_(), review_id: review.id, user_id: user.id, kind: now, created_at: now_() });
       return { review_id: review.id, kind: now };
@@ -192,7 +200,7 @@ const ACTIONS = {
     const p = req.place || {};
     const place = {
       id: newId_(),
-      name: required_(str_(p.name, LIMITS.name), 'name_required'),
+      name: required_(str_(p.name, LIMITS.placeName), 'name_required'),
       address: str_(p.address, LIMITS.address),
       lat: num_(p.lat, 'bad_location'),
       lng: num_(p.lng, 'bad_location'),
@@ -221,7 +229,7 @@ const ACTIONS = {
       const place = findById_('Places', p.id);
       if (!place) throw new ApiError('not_found');
       requireOwnerOrAdmin_(user, place);
-      place.name = required_(str_(p.name, LIMITS.name), 'name_required');
+      place.name = required_(str_(p.name, LIMITS.placeName), 'name_required');
       place.address = str_(p.address, LIMITS.address);
       place.type = types_(p).join(',');
       if ('lunch' in p) Object.assign(place, lunch_(p));
@@ -839,7 +847,7 @@ function importPlacesFromOSM() {
     if (/столовая/i.test(t.name)) type = 'canteen';
     const address = [t['addr:street'], t['addr:housenumber']].filter(Boolean).join(', ');
     rows.push(toRow_('Places', {
-      id: newId_(), name: str_(t.name, LIMITS.name), address: str_(address, LIMITS.address),
+      id: newId_(), name: str_(t.name, LIMITS.placeName), address: str_(address, LIMITS.address),
       lat, lng, type, osm_id: osmId, created_by: 'osm', created_at: now_(),
     }));
   });

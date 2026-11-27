@@ -192,7 +192,10 @@
     CONFIGURED, call, onAuth, restore, signOut, renderSignInButton, ensureSignedIn, photoUrl, store,
     useRedirect, signInRedirect,
     get user() { return user; },
-    get isAdmin() { return !!user && user.role === 'admin'; },
+    // real role; isAdmin is false while a moderator has "user mode" on (to test what regular users see)
+    get isModerator() { return !!user && user.role === 'admin'; },
+    get userMode() { try { return localStorage.getItem('user_mode') === '1'; } catch (e) { return false; } },
+    get isAdmin() { return this.isModerator && !this.userMode; },
     setUser(fields) {
       if (!user) return;
       Object.assign(user, fields);

@@ -20,5 +20,6 @@ Developer docs (setup, hosting, deploy, moderation, data model): docs-private/DE
 - After changing any app file, bump `VERSION` in `sw.js` so installed apps update.
 - Keep these lists in sync between frontend and backend: place types (`types` in i18n.js ↔ `PLACE_TYPES` in Code.gs),
   dish categories (`CAT_TREE`/`cats`/`groups` in i18n.js ↔ `CATEGORIES` in Code.gs), Sheet columns (`SCHEMA` in Code.gs ↔ data model in docs-private/DEVELOPER.md).
+- Commits: no `Co-Authored-By` line or any other AI attribution in commit messages or PR descriptions.
 - Run locally: `python3 -m http.server 8000` from the repo root (uses the real backend, shared data).
 

@@ -1,7 +1,7 @@
 // Friendly pop-up messages shown when the app opens (at most once every SHOW_EVERY_HOURS).
 // Edit freely: {n} = a number, {name} = the user's display name.
 window.MESSAGES = {
-  SHOW_EVERY_HOURS: 3,
+  SHOW_EVERY_HOURS: 1,
   SHOW_SECONDS: 5,       // how long the message stays fully visible (plus ~0.7 s fade in and out)
   PLACES_BELOW: 5,     // "add places" messages while the app has fewer places than this
   REVIEWS_BELOW: 10,   // "add reviews" messages while the app has fewer reviews than this

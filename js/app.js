@@ -35,9 +35,9 @@
     const me = API.user && API.user.id;
     IX.react = {};
     (db.reactions || []).forEach(x => {
-      const o = IX.react[x.review_id] = IX.react[x.review_id] || { heart: 0, clown: 0, mine: '' };
+      const o = IX.react[x.review_id] = IX.react[x.review_id] || { heart: 0, clown: 0, mine: {} };
       if (o[x.kind] !== undefined) o[x.kind]++;
-      if (x.user_id === me) o.mine = x.kind;
+      if (x.user_id === me) o.mine[x.kind] = true;
     });
     IX.wish = new Set(db.wishlist || []);
     IX.statsCache = {};
@@ -357,9 +357,9 @@
     }).join('')}</div>`;
   }
   // Moderators can also see the badges nobody has reached yet (greyed out); everyone else sees only earned ones.
-  const showLockedBadges = () => { try { return API.isAdmin && localStorage.getItem('show_locked_badges') === '1'; } catch (e) { return false; } };
+  const showLockedBadges = () => { try { return API.isModerator && localStorage.getItem('show_locked_badges') === '1'; } catch (e) { return false; } };
   function badgesHead(uid) {
-    const toggle = API.isAdmin ? `<button class="link small" data-act="toggle-locked-badges">${showLockedBadges() ? t('hide_locked') : t('show_locked')}</button>` : '';
+    const toggle = API.isModerator ? `<button class="link small" data-act="toggle-locked-badges">${showLockedBadges() ? t('hide_locked') : t('show_locked')}</button>` : '';
     return `<h3 class="badges-head"><span>${t('badges')} · ${earnedCount(uid)}/${(window.BADGES || []).length}</span>${toggle}</h3>`;
   }
   const earnedCount = uid => (window.BADGES || []).filter(b => { try { return b.test(userStats(uid)); } catch (e) { return false; } }).length;
@@ -748,8 +748,8 @@
     const d = IX.dish[r.dish_id]; const p = IX.place[r.place_id];
     const canDelete = mine || API.isAdmin;
     const edited = r.updated_at && r.created_at && (new Date(r.updated_at) - new Date(r.created_at) > 60000);
-    const re = IX.react[r.id] || { heart: 0, clown: 0, mine: '' };
-    const reactBtn = (kind, emoji) => `<button class="react ${re.mine === kind ? 'on' : ''}" ${mine ? 'disabled' : ''}
+    const re = IX.react[r.id] || { heart: 0, clown: 0, mine: {} };
+    const reactBtn = (kind, emoji) => `<button class="react ${re.mine[kind] ? 'on' : ''}" ${mine ? 'disabled' : ''}
       data-act="react" data-id="${esc(r.id)}" data-k="${kind}" aria-label="${t('react_' + kind)}">${emoji}<span>${re[kind] || ''}</span></button>`;
     return `<div class="review ${mine ? 'mine' : ''}">
       <div class="review-head">
@@ -861,6 +861,11 @@
       ${badgesHead(u.id)}
       ${badgesHtml(u.id, showLockedBadges())}
       ${langs}
+      ${API.isModerator ? `<h3>${t('mod_tools')}</h3>
+      <div class="lang-row"><span class="muted small">${t('user_mode')}</span><div class="seg mini">
+        <button class="${API.userMode ? '' : 'on'}" data-act="set-user-mode" data-v="0">${t('admin')}</button>
+        <button class="${API.userMode ? 'on' : ''}" data-act="set-user-mode" data-v="1">${t('user_role')}</button></div></div>
+      <div class="row-btns left"><button class="btn ghost sm" data-act="reset-motive">${t('reset_motive')}</button></div>` : ''}
       <h3>${t('my_reviews')}</h3>
       <div class="reviews">${mine.length ? mine.map(r => reviewCard(r, true)).join('') : `<div class="empty">${t('nothing_here')}</div>`}</div>
       ${foot}</div>`;
@@ -950,10 +955,10 @@
     const chosen = new Set(v.types);
     const moved = edit && latlng;
     openSheet(edit ? t('edit') : t('add_place'), `<form class="form" id="f-place">
-      <label>${t('name')}<input name="name" required maxlength="80" value="${esc(v.name)}"></label>
+      <label>${t('name')}<input name="name" required maxlength="30" value="${esc(v.name)}"></label>
       <div class="label">${t('types_pick')}</div>
       <div class="chips wrap type-pick">${I18N.TYPES.map(k => `<button type="button" class="chip ${chosen.has(k) ? 'on' : ''}" data-k="${k}">${esc(I18N.type(k))}</button>`).join('')}</div>
-      <label>${t('address')} <span class="muted">(${t('optional')})</span><input name="address" maxlength="120" value="${esc(v.address)}">
+      <label>${t('address')} <span class="muted">(${t('optional')})</span><input name="address" maxlength="30" value="${esc(v.address)}">
         <span class="muted small addr-note" hidden></span></label>
       ${edit ? `<div class="loc-row">${icon('pin')}<span class="grow small ${moved ? '' : 'muted'}">${moved ? t('location_changed') : t('location')}</span>
         <button type="button" class="btn ghost sm" data-move>${t('change_location')}</button></div>` : ''}
@@ -961,7 +966,7 @@
       <div class="row2"><label>${t('lunch_from')}<input name="open_from" type="time" value="${esc(v.open_from)}"></label>
         <label>${t('lunch_to')}<input name="open_to" type="time" value="${esc(v.open_to)}"></label></div>
       <button class="btn primary wide" type="submit">${t('save')}</button></form>`, w => {
-      const f = $('#f-place', w); $('input', f).focus();
+      const f = $('#f-place', w); if (!edit) $('input', f).focus(); // editing: no keyboard, the user may want another field
       const addr = $('[name=address]', f);
       // Fill the address from the map point (the user can still change it)
       if (latlng && (!edit || moved)) {
@@ -1012,7 +1017,7 @@
       if (!res.ok) return '';
       const a = (await res.json()).address || {};
       const street = a.road || a.pedestrian || a.footway || a.square || a.neighbourhood || a.suburb || '';
-      return [street, a.house_number].filter(Boolean).join(', ').slice(0, 120);
+      return [street, a.house_number].filter(Boolean).join(', ').slice(0, 30);
     } catch (e) { return ''; }
   }
   function dishForm(placeId, dish, presetCat) {
@@ -1027,11 +1032,11 @@
         `<option value="${g}" ${g === group0 ? 'selected' : ''}>${esc(I18N.group(g))}</option>`).join('')}</select></label>
       <label class="sub-wrap" ${group0 && I18N.CAT_TREE[group0].length ? '' : 'hidden'}>${t('subcategory')}<select name="sub">${subOptions(group0)}</select></label>
       <label>${t('price')}, ${CFG.CURRENCY} <span class="muted">(${t('optional')})</span><input name="price" type="number" inputmode="numeric" min="0" step="1" value="${dish.price == null ? '' : esc(dish.price)}"></label>
-      <label>${t('description')} <span class="muted">(${t('optional')})</span><textarea name="description" maxlength="300" rows="2">${esc(dish.description)}</textarea></label>
+      <label>${t('description')} <span class="muted">(${t('optional')})</span><textarea name="description" maxlength="300" rows="2" placeholder="${t('dish_desc_ph')}">${esc(dish.description)}</textarea></label>
       <div class="label">${t('photo')} <span class="muted">(${t('optional')})</span></div>
       ${photoPickerHtml(dish.photo_id)}
       <button class="btn primary wide" type="submit">${t('save')}</button></form>`, w => {
-      const f = $('#f-dish', w); $('input', f).focus();
+      const f = $('#f-dish', w); if (!edit) $('input', f).focus();
       const ph = bindPhotoPicker(f);
       const gSel = $('[name=group]', f), sSel = $('[name=sub]', f), subWrap = $('.sub-wrap', f);
       gSel.addEventListener('change', () => {
@@ -1286,12 +1291,13 @@
       if (el.disabled) return;
       if (!(await requireLogin())) return;
       const rid = el.dataset.id, me = API.user.id;
-      // same kind again = remove, other kind = switch; the exact wanted state is sent, so quick taps can't get mixed up
-      const want = (IX.react[rid] || {}).mine === el.dataset.k ? '' : el.dataset.k;
+      // ❤️ and 🤡 are separate switches (one person can put both); the exact wanted state is sent, so quick taps can't get mixed up
+      const kind = el.dataset.k;
+      const on = !((IX.react[rid] || {}).mine || {})[kind];
       optimistic(['reactions'], () => {
-        S.db.reactions = S.db.reactions.filter(x => !(x.review_id === rid && x.user_id === me));
-        if (want) S.db.reactions.push({ review_id: rid, user_id: me, kind: want });
-      }, () => API.call('react', { review_id: rid, kind: el.dataset.k, set: want }));
+        S.db.reactions = S.db.reactions.filter(x => !(x.review_id === rid && x.user_id === me && x.kind === kind));
+        if (on) S.db.reactions.push({ review_id: rid, user_id: me, kind });
+      }, () => API.call('react', { review_id: rid, kind, on }));
     },
     'open-user': el => {
       const id = el.dataset.id;
@@ -1308,6 +1314,8 @@
       if (await requireLogin(() => IX.dish[id] && dishPhotoForm(IX.dish[id]))) dishPhotoForm(IX.dish[id]);
     },
     'places-lunch': () => { S.placesLunch = !S.placesLunch; S.placesLimit = 60; render(); },
+    'set-user-mode': el => { try { localStorage.setItem('user_mode', el.dataset.v); } catch (e) {} render(); refreshMarkers(); },
+    'reset-motive': () => { try { localStorage.removeItem('motive_last_at'); } catch (e) {} maybeMotivate(); },
     'toggle-locked-badges': () => {
       try { localStorage.setItem('show_locked_badges', showLockedBadges() ? '0' : '1'); } catch (e) {}
       render();
